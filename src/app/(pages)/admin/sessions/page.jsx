@@ -97,6 +97,24 @@ const statusChip = (status) => {
 const truncate = (str = "", n = 8) =>
   str.length > n ? `${str.slice(0, n)}…${str.slice(-4)}` : str;
 
+/* Infer query type for “Live API” context + param decision */
+const inferQueryType = (q) => {
+  const s = (q || "").trim();
+  if (!s) return "empty";
+  const email =
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ||
+    (s.includes("@") && s.includes("."));
+  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(s);
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      s
+    );
+  if (email) return "email";
+  if (ipv4) return "ip";
+  if (uuid) return "uuid";
+  return "text";
+};
+
 /* Normalize server response:
    Accepts:
    A) { data: [ { sessionHolder, sessions: [ ... ] }, ... ], pagination }
@@ -195,10 +213,13 @@ export default function AdminSessionsPage() {
   const [sortKey, setSortKey] = useState("lastActiveAt"); // lastActiveAt|startedAt|expiresAt|holder
   const [sortDir, setSortDir] = useState("desc"); // asc|desc
   const [details, setDetails] = useState(null); // row for modal
+  const [searchMode, setSearchMode] = useState("local"); // "local" | "live"
 
   const [selected, setSelected] = useState(new Set()); // ids
 
   const hasMore = page < totalPages;
+
+  const queryType = useMemo(() => inferQueryType(query), [query]);
 
   const fetchPage = useCallback(
     async (p = 1, replace = false) => {
@@ -213,11 +234,19 @@ export default function AdminSessionsPage() {
           sortDir,
         });
 
-        // IMPORTANT: status tab drives the server query
+        // Server-driven status filter (per your requirement)
         if (statusTab !== "all") params.set("status", statusTab);
 
-        // (optional) you can push search to server by uncommenting:
-        // if (query.trim()) params.set("q", query.trim());
+        // NEW: if in Live API mode, push the search down to the server
+        if (searchMode === "live" && query.trim()) {
+          if (queryType === "email") {
+            // legacy exact email parameter your route already supports
+            params.set("search", query.trim());
+          } else {
+            // enhanced API (harmless if ignored by legacy handler)
+            params.set("q", query.trim());
+          }
+        }
 
         const json = await fetchWithAuthAdmin({
           url: `/api/admin/sessions?${params.toString()}`,
@@ -245,7 +274,18 @@ export default function AdminSessionsPage() {
         setLoading(false);
       }
     },
-    [admin, token, showInfo, groupByHolder, sortKey, sortDir, statusTab] // refetch when these change
+    [
+      admin,
+      token,
+      showInfo,
+      groupByHolder,
+      sortKey,
+      sortDir,
+      statusTab,
+      searchMode,
+      query,
+      queryType,
+    ]
   );
 
   // initial load
@@ -264,20 +304,41 @@ export default function AdminSessionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusTab]);
 
+  // NEW: refetch when we switch search mode
+  useEffect(() => {
+    setRaw([]);
+    setPage(1);
+    setTotalPages(1);
+    // Only auto-fetch if going into live mode (local mode continues client-side)
+    if (searchMode === "live") fetchPage(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchMode]);
+
+  // NEW: Live API — debounce fetch on query changes
+  useEffect(() => {
+    if (searchMode !== "live") return;
+    const t = setTimeout(() => fetchPage(1, true), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, searchMode]);
+
   const allRows = useMemo(() => raw, [raw]);
 
-  // Only search & sort on the client (status filtering is done by the server)
+  // Local mode = client search; Live mode = use server results as-is
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const rows = allRows.filter((r) => {
-      const inText =
-        !q ||
-        r.holder?.toLowerCase().includes(q) ||
-        r.ip?.toLowerCase().includes(q) ||
-        r.jti?.toLowerCase().includes(q) ||
-        r.userAgent?.toLowerCase().includes(q);
-      return inText;
-    });
+    const rows =
+      searchMode === "local"
+        ? allRows.filter((r) => {
+            const inText =
+              !q ||
+              r.holder?.toLowerCase().includes(q) ||
+              r.ip?.toLowerCase().includes(q) ||
+              r.jti?.toLowerCase().includes(q) ||
+              r.userAgent?.toLowerCase().includes(q);
+            return inText;
+          })
+        : allRows;
 
     const dir = sortDir === "asc" ? 1 : -1;
     const valueOf = (r) => {
@@ -300,7 +361,7 @@ export default function AdminSessionsPage() {
       return 0;
     });
     return rows;
-  }, [allRows, query, sortKey, sortDir]);
+  }, [allRows, query, sortKey, sortDir, searchMode]);
 
   const kpis = useMemo(() => {
     const active = filtered.filter((r) => computeStatus(r) === "active").length;
@@ -347,7 +408,9 @@ export default function AdminSessionsPage() {
 
   /* ------------------------------ mutations ------------------------------ */
 
-  // FIX: include adminId for compatibility with your current DELETE route
+  // include adminId for compatibility with your current DELETE route
+  const { showSuccess: _ok, showError: _err } = { showSuccess, showError };
+
   const revokeByIds = async (ids) => {
     if (!ids?.length) return;
     if (!confirm(`Revoke ${ids.length} session(s)?`)) return;
@@ -368,11 +431,10 @@ export default function AdminSessionsPage() {
     }
   };
 
-  // Robust "revoke all others": try new API, otherwise fall back to manual IDs
   const revokeAllOthers = async () => {
     if (!confirm("Revoke all other sessions (keep current)?")) return;
     try {
-      // Attempt modern endpoint (if you installed the improved API)
+      // Try modern endpoint
       let json = await fetchWithAuthAdmin({
         url: `/api/admin/sessions`,
         admin,
@@ -382,7 +444,7 @@ export default function AdminSessionsPage() {
       });
 
       if (!json?.success) {
-        // Fallback: fetch active sessions & revoke by IDs (legacy route)
+        // Fallback: fetch active & revoke by IDs (legacy)
         const params = new URLSearchParams({
           status: "active",
           groupBy: "none",
@@ -394,10 +456,7 @@ export default function AdminSessionsPage() {
           method: "GET",
         });
         const activeRows = normalize(act);
-        const ids = activeRows
-          .filter((r) => !r.isCurrent) // ignore current if server marks it
-          .map((r) => r.id);
-
+        const ids = activeRows.filter((r) => !r.isCurrent).map((r) => r.id);
         if (ids.length) {
           json = await fetchWithAuthAdmin({
             url: `/api/admin/sessions`,
@@ -433,6 +492,14 @@ export default function AdminSessionsPage() {
 
   /* ------------------------------- render -------------------------------- */
 
+  // NEW: Live API context box content
+  const queryParamUsed =
+    searchMode === "live" && query.trim()
+      ? queryType === "email"
+        ? "search"
+        : "q"
+      : null;
+
   return (
     <SidebarWrapper>
       <Header
@@ -440,6 +507,62 @@ export default function AdminSessionsPage() {
         subtitle="Review where admin accounts are signed in and take action quickly."
         hideButton
       />
+
+      {/* NEW: Live API search context box */}
+      {searchMode === "live" && (
+        <div className="mb-3 rounded border border-sky-200 bg-sky-50 text-sky-900 p-3">
+          <div className="text-sm font-medium mb-1">Live search context</div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge>Mode: Live API</Badge>
+            <Badge>
+              Status tab: <strong className="ml-1">{statusTab}</strong>
+            </Badge>
+            <Badge>
+              Group:{" "}
+              <strong className="ml-1">
+                {groupByHolder ? "holder" : "none"}
+              </strong>
+            </Badge>
+            <Badge>
+              Page:{" "}
+              <strong className="ml-1">
+                {page}/{Math.max(totalPages, 1)}
+              </strong>
+            </Badge>
+            <Badge>
+              Query type:{" "}
+              <strong className="ml-1">
+                {queryType === "empty" ? "—" : queryType}
+              </strong>
+            </Badge>
+            <Badge>
+              Param: <strong className="ml-1">{queryParamUsed || "—"}</strong>
+            </Badge>
+            <span className="ml-auto flex items-center gap-2">
+              <button
+                className="btn btn-xs"
+                onClick={() => setQuery("")}
+                title="Clear query"
+              >
+                Clear query
+              </button>
+              <button
+                className="btn btn-xs btn-primary-third"
+                onClick={() => setSearchMode("local")}
+                title="Switch to local search"
+              >
+                Use Local
+              </button>
+            </span>
+          </div>
+          {query && (
+            <div className="mt-2 text-xs">
+              Query:{" "}
+              <code className="px-1 py-0.5 bg-white rounded">{query}</code>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -455,16 +578,50 @@ export default function AdminSessionsPage() {
       {/* Primary actions + search/filters */}
       <div className="bg-white border border-zinc-200 rounded p-3 mb-3">
         <div className="flex flex-col md:flex-row gap-3 md:items-center">
-          <div className="flex-1 relative">
-            <FiSearch className="absolute left-3 top-2.5 text-zinc-400" />
-            <input
-              aria-label="Search sessions"
-              className={`pl-9 ${inputStyles}`}
-              placeholder="Search email, IP, JTI, device…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <div className="flex-1 flex gap-2">
+            <div className="flex-1 relative">
+              <FiSearch className="absolute left-3 top-2.5 text-zinc-400" />
+              <input
+                aria-label="Search sessions"
+                className={`pl-9 ${inputStyles}`}
+                placeholder={
+                  searchMode === "live"
+                    ? "Type to live-search (email, IP, JTI, device)…"
+                    : "Search locally (email, IP, JTI, device)…"
+                }
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && searchMode === "live") {
+                    fetchPage(1, true);
+                  }
+                }}
+              />
+            </div>
+            {searchMode === "live" && (
+              <button
+                onClick={() => {
+                  setQuery(query);
+                  fetchPage(1, true);
+                }}
+                className="btn btn-primary px-4"
+                aria-label="Search"
+              >
+                <FiSearch />
+              </button>
+            )}
+          </div>{" "}
+          {/* NEW: search mode mini dropdown */}
+          <Dropdown
+            options={[
+              { value: "local", label: "Local (in‑memory)" },
+              { value: "live", label: "Live API" },
+            ]}
+            value={searchMode}
+            onChange={setSearchMode}
+            size="sm"
+            position="bottom"
+          />
           <div className="flex gap-1">
             <button
               onClick={revokeAllOthers}
@@ -516,7 +673,7 @@ export default function AdminSessionsPage() {
                 className={`h-6 rounded-sm border cursor-pointer transition-all duration-200 center-flex gap-2 px-2 py-1 text-xs            
                 ${
                   groupByHolder
-                    ? "bg-primary border-primary text-white   "
+                    ? "bg-primary border-primary text-white"
                     : "border-zinc-300 hover:border-primary text-primary"
                 }`}
               >
@@ -642,6 +799,14 @@ export default function AdminSessionsPage() {
 }
 
 /* ------------------------------ components ------------------------------ */
+
+function Badge({ children }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-sky-300 bg-white text-sky-900">
+      {children}
+    </span>
+  );
+}
 
 function Kpi({ label, value }) {
   return (
@@ -812,17 +977,11 @@ function GroupSection({
                 className="px-3 py-2 align-top"
                 onClick={(e) => e.stopPropagation()}
               >
-                <td
-                  className="px-3 py-2 align-top"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Checkbox
-                    selected={selected.has(r.id)}
-                    onChange={(checked) =>
-                      onToggleOne(r.id, !selected.has(r.id))
-                    }
-                  />
-                </td>
+                {/* FIXED: removed nested <td> */}
+                <Checkbox
+                  selected={selected.has(r.id)}
+                  onChange={() => onToggleOne(r.id, !selected.has(r.id))}
+                />
               </td>
               <td className="px-3 py-2 align-top">
                 <div className="text-sm text-zinc-900">{r.holder}</div>
@@ -836,7 +995,6 @@ function GroupSection({
               <td className="px-3 py-2 align-top">
                 <div className="text-sm text-zinc-900">{device}</div>
               </td>
-
               <td className="px-3 py-2 align-top text-sm">
                 <div>{formatDate(r.lastActiveAt)}</div>
                 <div className="text-xs text-zinc-500">
