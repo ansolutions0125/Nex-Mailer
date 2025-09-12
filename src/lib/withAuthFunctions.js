@@ -6,7 +6,7 @@ import { computeAdminPermissions } from "./permissions";
 import Admin from "@/models/Admin";
 import AdminSession from "@/models/AdminSession";
 import Customer from "@/models/Customer";
-import Session from "@/models/Session";
+import Session from "@/models/CustomerSession";
 import { NextResponse } from "next/server";
 
 export async function adminReqWithAuth(headers) {

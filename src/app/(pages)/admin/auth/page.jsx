@@ -74,11 +74,7 @@ const Input = ({
 
   return (
     <div className="space-y-1">
-      {label && (
-        <label className={labelStyles("base")}>
-          {label}
-        </label>
-      )}
+      {label && <label className={labelStyles("base")}>{label}</label>}
       <div className="relative">
         <input
           name={name}
@@ -130,9 +126,7 @@ const PasswordInput = ({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <label className={labelStyles("base")}>
-          {label}
-        </label>
+        <label className={labelStyles("base")}>{label}</label>
         {forgotPasswordLink && (
           <button
             type="button"
@@ -402,7 +396,7 @@ const AdminAuth = () => {
   const currentConfig = useMemo(
     () => ({
       signin: {
-        header: "Welcome back",
+        header: "Welcome back Admin",
         sub: "Sign in to access your dashboard.",
         primaryCta: "Login to your account",
       },
@@ -701,7 +695,7 @@ const AdminAuth = () => {
         <div className="rounded-2xl bg-white shadow-xl border border-zinc-200 overflow-hidden">
           {/* Tabs (Sign Up removed) */}
           {mode !== "forgot" && (
-            <div className="border-b border-zinc-200 bg-zinc-50">
+            <div className="border-b border-zinc-200">
               <div className="flex">
                 {[
                   { key: "signin", label: "Sign In" },
@@ -713,8 +707,8 @@ const AdminAuth = () => {
                     onClick={() => setMode(tab.key)}
                     className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
                       mode === tab.key
-                        ? "bg-white text-zinc-900 border-b-2 border-zinc-800"
-                        : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-100/50"
+                        ? "bg-second text-white border-b-2 border-primary"
+                        : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-100"
                     }`}
                   >
                     {tab.label}
@@ -746,21 +740,23 @@ const AdminAuth = () => {
                 <MagicLinkInputs email={email} setEmail={setEmail} />
               )}
 
-              <button
-                type="button"
-                onClick={onSubmit}
-                disabled={loading}
-                className="w-full max-w-64 mx-auto btn btn-md btn-primary disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin invert"></div>
-                    Please wait...
-                  </div>
-                ) : (
-                  currentConfig.primaryCta
-                )}
-              </button>
+              <div className="border-t border-zinc-200 pt-5">
+                <button
+                  type="button"
+                  onClick={onSubmit}
+                  disabled={loading}
+                  className="w-64 btn btn-md btn-primary mx-auto disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                      Please wait...
+                    </div>
+                  ) : (
+                    currentConfig.primaryCta
+                  )}
+                </button>
+              </div>
 
               {mode === "forgot" && (
                 <button

@@ -9,7 +9,11 @@ const EmailLimitsSchema = new Schema(
     remaining: { type: Number, default: 0, min: 0 },
 
     // Align with plan.length; route sets/resets this
-    period: { type: String, enum: ["1month", "3month", "6month", "1year", "none"], default: "1month" },
+    period: {
+      type: String,
+      enum: ["1month", "3month", "6month", "1year", "none"],
+      default: "1month",
+    },
     periodStart: { type: Date },
     periodEnd: { type: Date },
     lastResetAt: { type: Date },
@@ -43,14 +47,26 @@ const CustomerStatsSchema = new Schema(
 
 const CustomerSchema = new Schema(
   {
-    slug: { type: String, trim: true, lowercase: true, unique: true, sparse: true },
+    slug: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true,
+    },
     isActive: { type: Boolean, default: true },
 
     // ---- Profile & Auth ----
-    email: { type: String, trim: true, lowercase: true, unique: true, sparse: true },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true,
+    },
     firstName: { type: String, trim: true },
     lastName: { type: String, trim: true },
-    passwordHash: { type: String },           // store only the hash
+    passwordHash: { type: String }, // store only the hash
     sessionType: { type: String, default: "password", trim: true },
     phoneNo: { type: String, trim: true },
     address: { type: String, trim: true },
@@ -75,4 +91,5 @@ const CustomerSchema = new Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.Customer || mongoose.model("Customer", CustomerSchema);
+export default mongoose.models.Customer ||
+  mongoose.model("Customer", CustomerSchema);

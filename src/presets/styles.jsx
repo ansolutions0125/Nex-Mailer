@@ -1,8 +1,21 @@
 export const labelStyles = (type) => {
   const baseStyles = "font-semibold text-zinc-500 uppercase tracking-wider";
-  return type === "mini"
-    ? `text-[0.6rem] ${baseStyles}`
-    : `text-xs ${baseStyles}`;
+  switch (type) {
+    case "mini":
+      return `text-[0.6rem] ${baseStyles}`;
+    case "xs":
+      return `text-[0.6rem] ${baseStyles}`;
+    case "sm":
+      return `text-[0.65rem] ${baseStyles}`;
+    case "md":
+      return `text-sm ${baseStyles}`;
+    case "lg":
+      return `text-base ${baseStyles}`;
+    case "xl":
+      return `text-lg ${baseStyles}`;
+    default:
+      return `text-xs ${baseStyles}`;
+  }
 };
 
 export const inputStyles =
@@ -28,6 +41,7 @@ export const MiniCard = ({ title, subLine }) => (
     </div>
   </div>
 );
+
 export const ToggleLiver = ({ key, checked, onChange }) => (
   <label
     htmlFor={key}

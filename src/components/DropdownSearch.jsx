@@ -1,3 +1,4 @@
+
 // components/DropdownSearch.jsx
 import PropTypes from "prop-types";
 import React, { useState, useRef, useEffect } from "react";
@@ -18,6 +19,8 @@ import { FiChevronDown, FiCheck, FiSearch, FiX } from "react-icons/fi";
  * @param {boolean} [props.isHighLighted=false] - Highlight state
  * @param {string} [props.searchPlaceholder='Search...'] - Search input placeholder
  */
+
+
 export const DropdownSearch = ({
   options = [],
   value,
@@ -177,7 +180,7 @@ export const DropdownSearch = ({
    // Size classes for the trigger button
   const sizeClasses = {
     sm: "px-2 py-1 text-xs",
-    md: "px-3 py-2 text-xs",
+    md: "px-3 py-2.5 text-xs",
     lg: "px-4 py-3 text-sm",
   };
 

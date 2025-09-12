@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
-const SessionSchema = new Schema(
+const CustomerSession = new Schema(
   {
     // JWT unique identifier (from the token 'jti' claim)
     tokenId: { type: String, required: true, unique: true, index: true },
@@ -28,5 +28,5 @@ const SessionSchema = new Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.Session ||
-  mongoose.model("Session", SessionSchema);
+export default mongoose.models.CustomerSession ||
+  mongoose.model("CustomerSession", CustomerSession);

@@ -40,7 +40,7 @@ export const useToastStore = create((set, get) => ({
   },
 
   // Convenience methods
-  showSuccess: (message, duration = 7000, options = {}) => {
+  showSuccess: (message, duration = 70000, options = {}) => {
     return get().showToast(message, "success", duration, options);
   },
 
