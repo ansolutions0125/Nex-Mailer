@@ -29,7 +29,9 @@ const MiniPill = ({ label, value }) => (
     <span className="uppercase tracking-wider text-zinc-500 font-semibold text-[0.65rem]">
       {label}
     </span>
-    <span className="text-zinc-800 font-medium bg-zinc-100 border px-2 py-1 rounded-sm">{value}</span>
+    <span className="text-zinc-800 font-medium bg-zinc-100 border px-2 py-1 rounded-sm">
+      {value}
+    </span>
   </div>
 );
 
@@ -79,7 +81,7 @@ const FlowNavbar = ({
 
   const statusIndicatorColor = useMemo(
     () =>
-      flow?.isActive ? "bg-third shadow-lg shadow-third/30" : "bg-zinc-300",
+      flow?.isActive ? "bg-second shadow-lg shadow-second/30" : "bg-zinc-300",
     [flow?.isActive]
   );
 
@@ -91,8 +93,8 @@ const FlowNavbar = ({
   const statusButtonClass = useMemo(
     () =>
       flow?.isActive
-        ? "text-red-700 bg-red-50 hover:bg-red-100 border border-red-200"
-        : "text-emerald-700 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300",
+        ? "text-red-700 bg-red-500/5 hover:bg-red-100 border border-red-200"
+        : "text-primary bg-second/10 hover:bg-second border border-second hover:text-white",
     [flow?.isActive]
   );
 
@@ -214,8 +216,7 @@ const FlowNavbar = ({
             className={`w-[2px] h-4 rounded text-white ${
               isGreen ? "bg-emerald-300" : "bg-third"
             }`}
-          >
-          </div>
+          ></div>
           <span
             className={`text-xs ${
               isGreen ? "text-emerald-600" : "text-zinc-700"
@@ -267,17 +268,17 @@ const FlowNavbar = ({
             <span className="hidden sm:inline">Back</span>
           </Link>
           <div className="relative">
-            <div className={`w-3.5 h-3.5 rounded-full ${statusIndicatorColor}`}>
+            <div className={`w-3.5 h-3.5 rounded ${statusIndicatorColor}`}>
               {flow?.isActive && (
-                <div className="absolute inset-0 rounded-full bg-third animate-ping opacity-75" />
+                <div className="absolute inset-0 rounded-full bg-second animate-ping opacity-75" />
               )}
             </div>
           </div>
           <span
-            className={`text-xs rounded px-2 py-1 border ${
+            className={`text-xs rounded-sm px-2 py-1 border ${
               flow?.isActive
-                ? "text-emerald-700 bg-emerald-100 border-emerald-300"
-                : "text-red-700 bg-red-50 border-red-200"
+                ? "text-second bg-second/10 border-second"
+                : "text-red-700 bg-red-500/10 border-red-500"
             }`}
           >
             {statusMessage}
@@ -321,7 +322,7 @@ const FlowNavbar = ({
               {(hasUnsavedChanges ||
                 hasUnsavedNameChanges ||
                 hasNameChanges) && (
-                <span className="px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 rounded border border-third">
+                <span className="px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 rounded-sm border border-third">
                   Unsaved
                 </span>
               )}
@@ -351,7 +352,7 @@ const FlowNavbar = ({
           >
             {hasUnsavedStatusChanges && (
               <div
-                className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"
+                className="w-2 h-2 rounded-full bg-primary animate-pulse"
                 title="Status change pending"
               />
             )}
@@ -394,7 +395,7 @@ const FlowNavbar = ({
                 label: (
                   <div className="flex items-center gap-2 w-full">
                     <FiEdit />
-                    Edit Automation Name
+                    Edit Work-Flow Name
                   </div>
                 ),
               },
@@ -421,7 +422,7 @@ const FlowNavbar = ({
                 label: (
                   <div className="flex items-center gap-2 w-full text-red-600">
                     <FiTrash2 />
-                    Delete Automation
+                    Delete Work-Flow
                   </div>
                 ),
               },
