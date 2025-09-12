@@ -4,23 +4,16 @@ import mongoose from "mongoose";
 import dbConnect from "@/config/mongoConfig";
 import CustomerSession from "@/models/CustomerSession";
 import {
-  adminReqWithAuth,
-  customerReqWithAuth,
+  anyReqWithAuth,
   requireOwner,
   requirePermission,
 } from "@/lib/withAuthFunctions";
-import Admin from "@/models/Admin";
 import Customer from "@/models/Customer";
 
 const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
 const oid = (v) => new mongoose.Types.ObjectId(v);
 const now = () => new Date();
 
-/**
- * Build a status predicate that works with BOTH session shapes:
- *  A) Your CustomerSession schema: tokenId, actorId, email, startDate, endDate, isActive, revokedAt
- *  B) Admin-style schema: jti, customerId, startedAt, expiresAt, revoked, endedAt
- */
 function statusOr(status) {
   const t = now();
   if (status === "active") {
@@ -57,22 +50,8 @@ function sanitizeLike(s = "") {
 export async function GET(request) {
   try {
     // Authenticate user
-    let adminAuthData, customerAuthData, authData;
-    try {
-      adminAuthData = await adminReqWithAuth(request.headers);
-      if (adminAuthData?.customer?._id) {
-        authData = adminAuthData;
-      }
-    } catch (e) {}
-
-    try {
-      customerAuthData = await customerReqWithAuth(request.headers);
-      if (customerAuthData?.customer?._id) {
-        authData = customerAuthData;
-      }
-    } catch (e) {}
-
-    if (!authData?.customer?._id) {
+    const authData = await anyReqWithAuth(request.headers);
+    if (!authData?.customer?._id && !authData?.admin?._id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 }
@@ -99,8 +78,8 @@ export async function GET(request) {
       (searchParams.get("sortDir") || "desc").toLowerCase() === "asc" ? 1 : -1;
 
     // Check if admin or customer
-    const userId = String(authData.customer._id);
-    const isAdmin = await Admin.findById(userId);
+    const userId = String(authData.admin?._id || authData.customer._id);
+    const isAdmin = !!authData.admin;
 
     // Build ANDed filters
     const AND = [{ actorType: "customer" }];
@@ -219,22 +198,8 @@ export async function GET(request) {
 export async function DELETE(request) {
   try {
     // Authenticate user
-    let adminAuthData, customerAuthData, authData;
-    try {
-      adminAuthData = await adminReqWithAuth(request.headers);
-      if (adminAuthData?.customer?._id) {
-        authData = adminAuthData;
-      }
-    } catch (e) {}
-
-    try {
-      customerAuthData = await customerReqWithAuth(request.headers);
-      if (customerAuthData?.customer?._id) {
-        authData = customerAuthData;
-      }
-    } catch (e) {}
-
-    if (!authData?.customer?._id) {
+    const authData = await anyReqWithAuth(request.headers);
+    if (!authData?.customer?._id && !authData?.admin?._id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 }
@@ -262,8 +227,8 @@ export async function DELETE(request) {
     }
 
     // Check if admin or customer
-    const userId = String(authData.customer._id);
-    const isAdmin = await Admin.findById(userId);
+    const userId = String(authData.admin?._id || authData.customer._id);
+    const isAdmin = !!authData.admin;
 
     // ANDed filter: target the given ids, customer actor, (optionally) specific customer,
     // and only sessions that are still active/not already ended.

@@ -223,8 +223,7 @@ export default function CustomerSessionsPage() {
 
   const queryType = useMemo(() => inferQueryType(query), [query]);
 
-  const fetchPage = useCallback(
-    async (p = 1, replace = false) => {
+    const fetchPage = async (p = 1, replace = false) => {
       setLoading(true);
       setError("");
       try {
@@ -269,25 +268,22 @@ export default function CustomerSessionsPage() {
       } finally {
         setLoading(false);
       }
-    },
-    [
-      admin,
-      token,
-      showInfo,
-      groupByHolder,
-      sortKey,
-      sortDir,
-      statusTab,
-      searchMode,
-      query,
-    ]
-  );
+    }
 
-  // initial load
-  useEffect(() => {
-    fetchPage(1, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+// ✅ one effect to rule them all
+useEffect(() => {
+  setSelected(new Set());
+  setRaw([]);
+  setPage(1);
+  setTotalPages(1);
+
+  // Only auto-fetch in "live" when searchMode is live; otherwise fetch baseline
+  const shouldFetch =
+    statusTab !== "all" || searchMode === "live" || raw.length === 0;
+
+  if (shouldFetch) fetchPage(1, true);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [statusTab, searchMode, sortKey, sortDir, groupByHolder]);
 
   // refetch on status tab change
   useEffect(() => {

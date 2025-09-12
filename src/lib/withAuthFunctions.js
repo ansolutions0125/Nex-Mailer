@@ -7,7 +7,6 @@ import Admin from "@/models/Admin";
 import AdminSession from "@/models/AdminSession";
 import Customer from "@/models/Customer";
 import Session from "@/models/CustomerSession";
-import { NextResponse } from "next/server";
 
 export async function adminReqWithAuth(headers) {
   await dbConnect();
@@ -166,4 +165,80 @@ export function requireOwner(authData) {
   return true;
 }
 
-// make an function that in takes authData to check if he is owner or if
+/**
+ * Throws an Error with .statusCode attached.
+ */
+function _throw(statusCode, message) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  throw err;
+}
+
+/**
+ * Unified request auth that supports **both** admin and customer tokens.
+ * It:
+ *  1) reads "mailer-auth-token" from headers,
+ *  2) decodes the JWT,
+ *  3) routes to the correct validator (adminReqWithAuth or customerReqWithAuth),
+ *  4) returns a single, normalized object you can branch on.
+ *
+ * @param {Headers} headers
+ * @returns {Promise<AnyAuth>}
+ */
+export async function anyReqWithAuth(headers) {
+  const token = headers.get("mailer-auth-token");
+  if (!token) _throw(401, "No auth token provided");
+
+  let decoded;
+  try {
+    decoded = verifyJWT(token);
+  } catch {
+    _throw(401, "Invalid or expired token");
+  }
+
+  // Prefer explicit "typ" when present, but be tolerant to structure
+  const isAdminToken =
+    decoded?.typ === "admin" || (decoded?.adminId && decoded?.jti);
+  const isCustomerToken =
+    decoded?.typ === "customer" || (decoded?.sub && (decoded?.sid || decoded?.jti));
+
+  if (isAdminToken) {
+    // Leverage your strict admin auth (DB checks, session validity, lastActive update, permissions)
+    const { admin, session, permissions, perms } = await adminReqWithAuth(headers);
+    return {
+      actorType: "admin",
+      tokenType: "admin",
+      tokenId: decoded.jti,
+      actorId: String(admin._id),
+      email: admin.email,
+      roleKey: admin.roleKey,
+      isActive: !!admin.isActive,
+      permissions,
+      perms,
+      admin,
+      session,
+      tokenRaw: decoded,
+    };
+  }
+
+  if (isCustomerToken) {
+    // Leverage your strict customer auth (DB checks, session validity)
+    const { customer, session } = await customerReqWithAuth(headers);
+    return {
+      actorType: "customer",
+      tokenType: "customer",
+      tokenId: decoded.sid || decoded.jti,
+      actorId: String(customer._id),
+      email: customer.email,
+      roleKey: customer.roleKey || "customer",
+      isActive: !!customer.isActive,
+      permissions: [],      // customers don't use your admin permission system
+      perms: undefined,     // keep field for shape parity; not applicable
+      customer,
+      session,
+      tokenRaw: decoded,
+    };
+  }
+
+  _throw(401, "Unrecognized token type");
+}
