@@ -12,7 +12,6 @@ import { DropdownSearch } from "@/components/DropdownSearch";
 import {
   FiTrash2,
   FiEdit2,
-  FiChevronUp,
   FiZap,
   FiLink2,
   FiLoader,
@@ -20,11 +19,12 @@ import {
   FiInbox,
   FiSearch,
   FiArrowLeft,
+  FiClock,
 } from "react-icons/fi";
 import FlowHeader from "./FlowHeader";
 import { useToastStore } from "@/store/useToastStore";
 import { RxDragHandleVertical } from "react-icons/rx";
-import { HiArrowDown, HiArrowLongDown } from "react-icons/hi2";
+import { HiArrowLongDown } from "react-icons/hi2";
 import Link from "next/link";
 
 /* =========================================================
