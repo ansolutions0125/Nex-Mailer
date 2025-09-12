@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect } from "react";
 import {
   Search,
   Filter,
@@ -8,25 +8,13 @@ import {
   MailOpen,
   AlertCircle,
   Clock,
-  User,
-  Server,
-  Activity,
-  Calendar,
   Eye,
-  Trash2,
-  Download,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
-  X,
-  Check,
-  MoreVertical,
-  List,
-  Grid,
 } from "lucide-react";
 import SidebarWrapper from "@/components/SidebarWrapper";
 import { Dropdown } from "@/components/Dropdown";
-import { useSearchParams } from "next/navigation";
 import { FiGrid, FiList, FiTrash } from "react-icons/fi";
 
 const EmailLogs = () => {
@@ -36,16 +24,33 @@ const EmailLogs = () => {
   const [statistics, setStatistics] = useState({});
   const [pagination, setPagination] = useState({});
   const [selectedLogs, setSelectedLogs] = useState([]);
-  
+
   // State for filter context information
   const [filterContext, setFilterContext] = useState({});
 
   // Read URL params on initial load
-  const searchParams = useSearchParams();
-  const contactIdFromUrl = searchParams.get("contactId");
-  const flowIdFromUrl = searchParams.get("flowId");
-  const listIdFromUrl = searchParams.get("listId");
-  const websiteIdFromUrl = searchParams.get("websiteId");
+  const [contactIdFromUrl, setContactIdFromUrl] = useState();
+  const [flowIdFromUrl, setFlowIdFromUrl] = useState();
+  const [listIdFromUrl, setListIdFromUrl] = useState();
+  const [websiteIdFromUrl, setWebsiteIdFromUrl] = useState();
+
+  function getQueryParam(param) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(param);
+  }
+
+  useLayoutEffect(() => {
+    const contactId = getQueryParam("contactId");
+    const flowId = getQueryParam("flowId");
+    const listId = getQueryParam("listId");
+    const websiteId = getQueryParam("websiteId");
+
+    setContactIdFromUrl(contactId)
+    setFlowIdFromUrl(flowId)
+    setListIdFromUrl(listId)
+    setWebsiteIdFromUrl(websiteId)
+  }, [getQueryParam]);
+  // Usage
 
   // Filter and search states
   const [filters, setFilters] = useState({
@@ -71,7 +76,8 @@ const EmailLogs = () => {
   const [selectAll, setSelectAll] = useState(false);
 
   // Check if any URL parameters are present
-  const hasUrlFilters = contactIdFromUrl || flowIdFromUrl || listIdFromUrl || websiteIdFromUrl;
+  const hasUrlFilters =
+    contactIdFromUrl || flowIdFromUrl || listIdFromUrl || websiteIdFromUrl;
 
   // Menu options for each log card
   const getLogMenuOptions = (log) => [
@@ -197,15 +203,23 @@ const EmailLogs = () => {
 
   // Simple Filter Display Component - shows when URL params are present
   const FilterDisplay = () => {
-    if (!contactIdFromUrl && !flowIdFromUrl && !listIdFromUrl && !websiteIdFromUrl) {
+    if (
+      !contactIdFromUrl &&
+      !flowIdFromUrl &&
+      !listIdFromUrl &&
+      !websiteIdFromUrl
+    ) {
       return null;
     }
 
     let filterText = "";
-    
+
     if (contactIdFromUrl) {
-      const contactName = filterContext.contactName || `Contact ID: ${contactIdFromUrl}`;
-      const contactEmail = filterContext.contactEmail ? ` (${filterContext.contactEmail})` : '';
+      const contactName =
+        filterContext.contactName || `Contact ID: ${contactIdFromUrl}`;
+      const contactEmail = filterContext.contactEmail
+        ? ` (${filterContext.contactEmail})`
+        : "";
       filterText = `Showing logs for ${contactName}${contactEmail}`;
     } else if (flowIdFromUrl) {
       const flowName = filterContext.flowName || `Flow ID: ${flowIdFromUrl}`;
@@ -214,7 +228,8 @@ const EmailLogs = () => {
       const listName = filterContext.listName || `List ID: ${listIdFromUrl}`;
       filterText = `Showing logs for ${listName}`;
     } else if (websiteIdFromUrl) {
-      const websiteName = filterContext.websiteName || `Website ID: ${websiteIdFromUrl}`;
+      const websiteName =
+        filterContext.websiteName || `Website ID: ${websiteIdFromUrl}`;
       filterText = `Showing logs for ${websiteName}`;
     }
 
@@ -225,12 +240,8 @@ const EmailLogs = () => {
             <Filter className="w-4 h-4 text-blue-600" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-blue-900">
-              Filtered View
-            </h3>
-            <p className="text-sm text-blue-700">
-              {filterText}
-            </p>
+            <h3 className="text-sm font-medium text-blue-900">Filtered View</h3>
+            <p className="text-sm text-blue-700">{filterText}</p>
           </div>
         </div>
       </div>
@@ -287,7 +298,6 @@ const EmailLogs = () => {
     );
   };
 
- 
   // Mini card component
   const MiniCard = ({ title, subLine }) => {
     return (
@@ -305,16 +315,16 @@ const EmailLogs = () => {
   const EmailLogCard = ({ log, isSelected, onSelect }) => (
     <div
       className={`rounded border transition-all duration-200 gap-6 p-6 relative ${
-          isSelected  
-            ? "bg-zinc-50 border-y-2 border-primary"
-            : "bg-zinc-50 hover:border-zinc-300"
-        }`}
-      >
-        {isSelected && (
-          <div className="absolute -top-3 right-1 bg-primary text-white text-xs px-2 py-1 rounded uppercase tracking-wider transition-all">
-            Selected
-          </div>
-        )}
+        isSelected
+          ? "bg-zinc-50 border-y-2 border-primary"
+          : "bg-zinc-50 hover:border-zinc-300"
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute -top-3 right-1 bg-primary text-white text-xs px-2 py-1 rounded uppercase tracking-wider transition-all">
+          Selected
+        </div>
+      )}
       {/* Selection checkbox */}
       {onSelect && (
         <div className="absolute top-4 right-4 z-10">

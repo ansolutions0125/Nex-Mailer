@@ -169,17 +169,17 @@ const AutomationCard = ({
 
   return (
     <div
-       className={`rounded border transition-all duration-200 gap-6 p-6 relative ${
-          isSelected  
-            ? "bg-zinc-50 border-y-2 border-primary"
-            : "bg-zinc-50 hover:border-zinc-300"
-        }`}
-      >
-        {isSelected && (
-          <div className="absolute -top-3 right-1 bg-primary text-white text-xs px-2 py-1 rounded uppercase tracking-wider transition-all">
-            Selected
-          </div>
-        )}
+      className={`rounded border transition-all duration-200 gap-6 p-6 relative ${
+        isSelected
+          ? "bg-zinc-50 border-y-2 border-primary"
+          : "bg-zinc-50 hover:border-zinc-300"
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute -top-3 right-1 bg-primary text-white text-xs px-2 py-1 rounded uppercase tracking-wider transition-all">
+          Selected
+        </div>
+      )}
       {/* Selection checkbox */}
       {onSelect && (
         <div className="absolute top-4 right-4 z-10">
@@ -981,9 +981,10 @@ const Automations = () => {
   }, [fetchAllData]);
 
   const onSteps = (automation) => {
-    router.push(`/automations/working?automationId=${automation._id}`);
+    if (automation?._id) {
+      router.push(`/automations/working?automationId=${automation._id}`);
+    }
   };
-
   return (
     <SidebarWrapper>
       <AnimatePresence>

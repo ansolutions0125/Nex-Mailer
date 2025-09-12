@@ -8,14 +8,11 @@ import React, {
   useEffect,
 } from "react";
 import PropTypes from "prop-types";
-import { useSearchParams } from "next/navigation";
 import { DropdownSearch } from "@/components/DropdownSearch";
 import {
-  FiPlus,
   FiTrash2,
   FiEdit2,
   FiChevronUp,
-  FiClock,
   FiZap,
   FiLink2,
   FiLoader,
@@ -460,9 +457,13 @@ ConfirmDialog.propTypes = {
    Main Page (reads ?automationId=...)
 ========================================================= */
 export default function WorkflowPage() {
-  const searchParams = useSearchParams();
-  const flowId = searchParams.get("automationId");
-
+  function getQueryParam(param) {
+    const urlParams = new URLSearchParams(window.location.search);
+    console.log(urlParams)
+    return urlParams.get(param);
+  }
+ 
+  const [flowId, setFlowId] = useState()
   const [loadingShell, setLoadingShell] = useState(true);
   const [loadingError, setLoadingError] = useState(null);
   const [automation, setAutomation] = useState(null);
@@ -488,12 +489,14 @@ export default function WorkflowPage() {
   // hydrate shell + possible draft
   useEffect(() => {
     (async () => {
+       const flowId = getQueryParam("automationId");
+       setFlowId(flowId);
       if (!flowId) return;
       try {
         setLoadingShell(true);
         setLoadingError(null);
         const shell = await fetchAutomationShell(flowId);
-        console.log(shell)
+        console.log(shell);
         setAutomation(shell.automation);
         setWebsiteData(shell.websiteData || null);
         setConnectedList(shell.connectedList || null);
@@ -660,9 +663,9 @@ export default function WorkflowPage() {
   if (loadingError) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-4">
-      <Link href={"/automations"} className="btn btn-md btn-primary gap-2">
-        <FiArrowLeft/> Go Back
-      </Link>
+        <Link href={"/automations"} className="btn btn-md btn-primary gap-2">
+          <FiArrowLeft /> Go Back
+        </Link>
         <EmptyState
           icon={FiAlertCircle}
           title="Failed to Load Automation"

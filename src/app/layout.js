@@ -1,5 +1,4 @@
 import "./globals.css";
-import "simple-notify/dist/simple-notify.css";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import Script from "next/script";

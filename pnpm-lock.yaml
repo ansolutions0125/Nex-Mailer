@@ -89,12 +89,6 @@ importers:
       recharts:
         specifier: ^3.1.2
         version: 3.1.2(react-dom@19.1.1(react@19.1.1))(react-is@16.13.1)(react@19.1.1)(redux@5.0.1)
-      simple-notify:
-        specifier: ^1.0.6
-        version: 1.0.6
-      sweetalert2:
-        specifier: ^11.19.1
-        version: 11.23.0
       vercel:
         specifier: ^46.0.2
         version: 46.1.1
@@ -2606,9 +2600,6 @@ packages:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
 
-  simple-notify@1.0.6:
-    resolution: {integrity: sha512-/nO2zwJvMls7MoViV8WpzJccI3LTOM4DfCc21gqtHJEzU1kKMHIBofj9AwjdVrosK+R2nJYJ8F/ImFLAdZpyAw==}
-
   simple-swizzle@0.2.2:
     resolution: {integrity: sha512-JA//kQgZtbuY83m+xT+tXJkmJncGMTFT+C+g2h2R9uxkYIrE2yy9sgmcLhCnw57/WSD+Eh3J97FPEDFnbXnDUg==}
 
@@ -2688,9 +2679,6 @@ packages:
   supports-preserve-symlinks-flag@1.0.0:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
-
-  sweetalert2@11.23.0:
-    resolution: {integrity: sha512-cKzzbC3C1sIs7o9XAMw4E8F9kBtGXsBDUsd2JZ8JM/dqa+nzWwSGM+9LLYILZWzWHzX9W+HJNHyBlbHPVS/krw==}
 
   tailwindcss@3.4.17:
     resolution: {integrity: sha512-w33E2aCvSDP0tW9RZuNXadXlkHXqFzSkQew/aIa2i/Sj8fThxwovwlXHSPXTbAHwEIhBFXAedUhP2tueAKP8Og==}
@@ -5684,8 +5672,6 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
-  simple-notify@1.0.6: {}
-
   simple-swizzle@0.2.2:
     dependencies:
       is-arrayish: 0.3.2
@@ -5768,8 +5754,6 @@ snapshots:
       ts-interface-checker: 0.1.13
 
   supports-preserve-symlinks-flag@1.0.0: {}
-
-  sweetalert2@11.23.0: {}
 
   tailwindcss@3.4.17(ts-node@10.9.1(@types/node@16.18.11)(typescript@4.9.5)):
     dependencies:
