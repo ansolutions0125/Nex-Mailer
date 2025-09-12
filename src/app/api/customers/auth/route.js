@@ -18,6 +18,7 @@ import CustomerSession from "@/models/CustomerSession"; // make sure this exists
 import AuthSettings from "@/models/AuthSettings";
 import { signCustomerJWT } from "@/lib/jwt"; // make sure this exists
 
+
 /* --------------------------------- utils --------------------------------- */
 
 /** Helpers **/
@@ -372,10 +373,17 @@ export async function POST(request) {
         );
       }
 
-      const { email, password, userAgent = "", ip = "" } = body || {};
+      const { email, password } = body || {};
+      const userAgent = request.headers.get("user-agent") || "";
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0] ||
+        request.headers.get("x-real-ip") ||
+        "";
 
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
       if (!user) {
         // consistent with admin: vague error
@@ -472,7 +480,9 @@ export async function POST(request) {
 
       const { email } = body || {};
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
 
       // Vague response to avoid account enumeration
@@ -508,7 +518,9 @@ export async function POST(request) {
 
       const { email, token, userAgent = "", ip = "" } = body || {};
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
 
       if (!user || !user.magicLink?.token) {
@@ -600,7 +612,9 @@ export async function POST(request) {
     if (action === "forgot") {
       const { email } = body || {};
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
 
       // Vague, non-enumerating response
