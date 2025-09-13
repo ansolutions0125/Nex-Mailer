@@ -1,1 +1,13 @@
-{}
+{
+  "version": 2,
+  "crons": [
+    {
+      "path": "/api/crons/emailProcessor",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/crons/processingCron", 
+      "schedule": "* * * * *"
+    }
+  ]
+}
