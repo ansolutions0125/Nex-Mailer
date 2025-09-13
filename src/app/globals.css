@@ -89,6 +89,7 @@ body {
 
 .animate-progress-bar {
   animation: progressBar linear forwards;
+  transition: width 0.3s ease-in-out;
 }
 
 /* Global scrollbar styles */

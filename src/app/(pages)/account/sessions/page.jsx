@@ -125,8 +125,7 @@ const normalize = (json) => {
   const groups = Array.isArray(json?.data) ? json.data : [];
   const out = [];
   const push = (raw, holder) => {
-    const email =
-      raw?.email || holder || raw?.sessionHolder || "unknown";
+    const email = raw?.email || holder || raw?.sessionHolder || "unknown";
     const startedAt = raw?.startedAt || raw?.startDate || raw?.createdAt;
     const expiresAt = raw?.expiresAt || raw?.endDate;
     const endedAt = raw?.endedAt || raw?.revokedAt || null;
@@ -223,67 +222,67 @@ export default function CustomerSessionsPage() {
 
   const queryType = useMemo(() => inferQueryType(query), [query]);
 
-    const fetchPage = async (p = 1, replace = false) => {
-      setLoading(true);
-      setError("");
-      try {
-        const params = new URLSearchParams({
-          page: String(p),
-          limit: "20",
-          groupBy: groupByHolder ? "holder" : "none",
-          sortBy: sortKey,
-          sortDir,
-        });
+  const fetchPage = async (p = 1, replace = false) => {
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({
+        page: String(p),
+        limit: "20",
+        groupBy: groupByHolder ? "holder" : "none",
+        sortBy: sortKey,
+        sortDir,
+      });
 
-        // Server-driven status filter
-        if (statusTab !== "all") params.set("status", statusTab);
+      // Server-driven status filter
+      if (statusTab !== "all") params.set("status", statusTab);
 
-        // Live API mode: always send q
-        if (searchMode === "live" && query.trim()) {
-          params.set("q", query.trim());
-        }
-
-        const json = await fetchWithAuthAdmin({
-          url: `/api/customers/sessions?${params.toString()}`,
-          admin,
-          token,
-          method: "GET",
-        });
-
-        if (!json?.success) {
-          throw new Error(json?.message || "Failed to fetch sessions");
-        }
-
-        const rows = normalize(json);
-        const pagination = json?.pagination || { page: p, totalPages: 1 };
-
-        setRaw((prev) => (replace ? rows : [...prev, ...rows]));
-        setPage(pagination.page || p);
-        setTotalPages(pagination.totalPages || 1);
-
-        if (json.message) showInfo(json.message);
-      } catch (e) {
-        console.error(e);
-        setError(e?.message || "Failed to fetch sessions");
-      } finally {
-        setLoading(false);
+      // Live API mode: always send q
+      if (searchMode === "live" && query.trim()) {
+        params.set("q", query.trim());
       }
+
+      const json = await fetchWithAuthAdmin({
+        url: `/api/customers/sessions?${params.toString()}`,
+        admin,
+        token,
+        method: "GET",
+      });
+
+      if (!json?.success) {
+        throw new Error(json?.message || "Failed to fetch sessions");
+      }
+
+      const rows = normalize(json);
+      const pagination = json?.pagination || { page: p, totalPages: 1 };
+
+      setRaw((prev) => (replace ? rows : [...prev, ...rows]));
+      setPage(pagination.page || p);
+      setTotalPages(pagination.totalPages || 1);
+
+      if (json.message) showInfo(json.message);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Failed to fetch sessions");
+    } finally {
+      setLoading(false);
     }
+  };
 
-// ✅ one effect to rule them all
-useEffect(() => {
-  setSelected(new Set());
-  setRaw([]);
-  setPage(1);
-  setTotalPages(1);
+  // ✅ one effect to rule them all
+  useEffect(() => {
+    setSelected(new Set());
+    setRaw([]);
+    setPage(1);
+    setTotalPages(1);
 
-  // Only auto-fetch in "live" when searchMode is live; otherwise fetch baseline
-  const shouldFetch =
-    statusTab !== "all" || searchMode === "live" || raw.length === 0;
+    // Only auto-fetch in "live" when searchMode is live; otherwise fetch baseline
+    const shouldFetch =
+      statusTab !== "all" || searchMode === "live" || raw.length === 0;
 
-  if (shouldFetch) fetchPage(1, true);
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [statusTab, searchMode, sortKey, sortDir, groupByHolder]);
+    if (shouldFetch) fetchPage(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusTab, searchMode, sortKey, sortDir, groupByHolder]);
 
   // refetch on status tab change
   useEffect(() => {
@@ -465,15 +464,16 @@ useEffect(() => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `customer-sessions-${new Date().toISOString().slice(0, 19)}.csv`;
+    a.download = `customer-sessions-${new Date()
+      .toISOString()
+      .slice(0, 19)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   /* ------------------------------- render -------------------------------- */
 
-  const queryParamUsed =
-    searchMode === "live" && query.trim() ? "q" : null;
+  const queryParamUsed = searchMode === "live" && query.trim() ? "q" : null;
 
   return (
     <SidebarWrapper>

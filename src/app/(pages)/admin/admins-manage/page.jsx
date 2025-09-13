@@ -1,33 +1,47 @@
 // app/admins/page.jsx
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import PropTypes from "prop-types";
 import SidebarWrapper from "@/components/SidebarWrapper";
 import Header from "@/components/Header";
 import { Dropdown } from "@/components/Dropdown";
 import {
-  FiCheck,
-  FiChevronLeft,
+  FiChevronDown,
   FiChevronRight,
+  FiCopy,
+  FiEdit,
   FiEdit2,
-  FiGrid,
-  FiList,
   FiPlus,
+  FiRefreshCw,
+  FiSearch,
+  FiToggleLeft,
+  FiToggleRight,
   FiTrash2,
   FiUser,
   FiX,
-  FiToggleLeft,
-  FiToggleRight,
-  FiEdit,
 } from "react-icons/fi";
 import { ImSpinner5 } from "react-icons/im";
-import { AnimatePresence, motion } from "framer-motion";
 import useAdminStore from "@/store/useAdminStore";
-import { inputStyles, labelStyles, MiniCard } from "@/presets/styles";
+import {
+  inputStyles,
+  labelStyles,
+  MiniCard,
+  Checkbox,
+  ToggleLiver,
+  KeyValue,
+} from "@/presets/styles";
 import { fetchWithAuthAdmin } from "@/helpers/front-end/request";
 import { DropdownSearch } from "@/components/DropdownSearch";
 import { useToastStore } from "@/store/useToastStore";
+
+/* ------------------------------ utilities ------------------------------ */
 
 const formatDate = (dateString) => {
   if (!dateString) return "—";
@@ -42,15 +56,11 @@ const formatDate = (dateString) => {
   });
 };
 
-// Enhanced error handling utility
 const handleApiError = (error, defaultMessage = "An error occurred") => {
   console.error("API Error:", error);
-
-  // If it's a fetch response error with parsed data
   if (error.response && error.response.data) {
     const data = error.response.data;
     const status = error.response.status;
-
     switch (status) {
       case 401:
         return data.message || "Authentication failed. Please log in again.";
@@ -70,74 +80,68 @@ const handleApiError = (error, defaultMessage = "An error occurred") => {
         return data.message || defaultMessage;
     }
   }
-
-  // If it's a structured error object with message
-  if (error.message) {
-    return error.message;
-  }
-
-  // Network or other errors
+  if (error.message) return error.message;
   if (error.name === "NetworkError" || error.code === "NETWORK_ERROR") {
     return "Network error. Please check your connection.";
   }
-
   return defaultMessage;
 };
 
-// Enhanced success message handler
 const getSuccessMessage = (response, defaultMessage) => {
-  // Check for API message in response
-  if (response?.message) {
-    return response.message;
-  }
-
-  // Check for nested data message
-  if (response?.data?.message) {
-    return response.data.message;
-  }
-
+  if (response?.message) return response.message;
+  if (response?.data?.message) return response.data.message;
   return defaultMessage;
 };
 
-// ---------- page ----------
-const AdminsPage = () => {
+const roleLabel = (a) => {
+  const key = a?.roleKey || a?.roleId?.key;
+  const name = a?.roleId?.name;
+  if (name && key) return `${name} (${key})`;
+  return key || name || "—";
+};
+
+/* ------------------------------- page ---------------------------------- */
+
+export default function AdminsPage() {
   const { admin, setAdmin, token } = useAdminStore();
-  const { showSuccess, showError, showInfo, showWarning } = useToastStore();
+  const { showSuccess, showError, showInfo } = useToastStore();
 
-  // list state
+  // data
   const [admins, setAdmins] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [roles, setRoles] = useState([]);
 
-  // filters / layout
-  const [viewMode, setViewMode] = useState("single");
+  // ui state
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // filters
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusTab, setStatusTab] = useState("all"); // all | active | disabled
+  const [roleFilter, setRoleFilter] = useState("all");
 
-  // pagination (local state naming)
+  // pagination
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
-    total: 0, // maps from server totalItems
-    limit: 10, // maps from server itemsPerPage
+    total: 0,
+    limit: 10,
   });
 
   // selection
-  const [selected, setSelected] = useState([]);
-  const [selectAll, setSelectAll] = useState(false);
+  const [selected, setSelected] = useState(new Set());
 
   // modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [editingOriginal, setEditingOriginal] = useState(null); // keep original admin snapshot for diffs
+  const [editingOriginal, setEditingOriginal] = useState(null);
   const [editingRoleKeyInitial, setEditingRoleKeyInitial] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
 
-  const [roles, setRoles] = useState([]);
-
-  // form
+  // form data
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -148,8 +152,11 @@ const AdminsPage = () => {
     country: "",
     isActive: true,
     sessionType: "password",
-    roleKey: "admin", // single role key (matches API)
+    roleKey: "admin",
   });
+
+  // avoid StrictMode double fire
+  const didRun = useRef(false);
 
   // debounce search
   useEffect(() => {
@@ -157,16 +164,11 @@ const AdminsPage = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const roleLabel = (a) => {
-    const key = a?.roleKey || a?.roleId?.key;
-    const name = a?.roleId?.name;
-    if (name && key) return `${name} (${key})`;
-    return key || name || "—";
-  };
+  /* ---------------------------- data fetching --------------------------- */
 
-  // Updated fetchAdmins with better error handling
   const fetchAdmins = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const query = new URLSearchParams({
         page: String(pagination.currentPage),
@@ -181,14 +183,12 @@ const AdminsPage = () => {
         method: "GET",
       });
 
-      if (!json?.success) {
-        console.error(json?.message || "Failed to fetch admins");
-      }
+      if (!json?.success)
+        throw new Error(json?.message || "Failed to fetch admins");
 
       const data = Array.isArray(json.data) ? json.data : [];
-
-      // Map server pagination -> client
       const pag = json.pagination || {};
+
       setAdmins(data);
       setPagination((p) => ({
         ...p,
@@ -199,26 +199,24 @@ const AdminsPage = () => {
         limit: pag.itemsPerPage ?? p.limit,
       }));
 
-      // Show API message if it exists (for important messages)
       if (json.message && json.message !== "Admins fetched successfully") {
         showInfo(json.message);
       }
-    } catch (error) {
-      const errorMessage = handleApiError(error, "Failed to load admins");
-      showError(errorMessage);
+    } catch (e) {
+      const msg = handleApiError(e, "Failed to load admins");
+      setError(msg);
       setAdmins([]);
       setPagination((p) => ({ ...p, total: 0, totalPages: 1 }));
     } finally {
       setLoading(false);
     }
   }, [
-    pagination.currentPage,
-    pagination.limit,
-    debouncedSearch,
-    showInfo,
-    showError,
     admin,
     token,
+    debouncedSearch,
+    pagination.currentPage,
+    pagination.limit,
+    showInfo,
   ]);
 
   const fetchRoles = useCallback(async () => {
@@ -229,122 +227,136 @@ const AdminsPage = () => {
         token,
         method: "GET",
       });
-
-      if (!json?.success) {
-        console.error(json?.message || "Failed to fetch roles");
-      }
-
-      const data = Array.isArray(json.data) ? json.data : [];
-      setRoles(data);
-
-      // Show API message if it exists
-      if (json.message && json.message !== "Roles fetched successfully") {
-        showInfo(json.message);
-      }
-    } catch (error) {
-      const errorMessage = handleApiError(error, "Failed to load roles");
-      showError(errorMessage);
+      if (!json?.success)
+        throw new Error(json?.message || "Failed to fetch roles");
+      setRoles(Array.isArray(json.data) ? json.data : []);
+    } catch (e) {
+      showError(handleApiError(e, "Failed to load roles"));
       setRoles([]);
     }
-  }, [showInfo, showError, admin, token]);
+  }, [admin, token, showError]);
 
   useEffect(() => {
+    if (didRun.current) return;
+    didRun.current = true;
     fetchAdmins();
     fetchRoles();
   }, [fetchAdmins, fetchRoles]);
 
-  // filter client-side for extras (also works if server search omitted)
-  const filtered = useMemo(() => {
-    const s = (debouncedSearch || "").toLowerCase();
-    if (!s) return admins;
-    return admins.filter((a) => {
-      const buckets = [
-        a?.email,
-        a?.firstName,
-        a?.lastName,
-        a?.roleKey,
-        a?.roleId?.name,
-        a?.roleId?.key,
-      ];
-      return buckets.some((v) =>
-        String(v || "")
-          .toLowerCase()
-          .includes(s)
-      );
-    });
-  }, [admins, debouncedSearch]);
-
+  // refetch on search/paging
   useEffect(() => {
-    if (filtered.length === 0) return setSelectAll(false);
-    setSelectAll(filtered.every((a) => selected.includes(a._id)));
-  }, [filtered, selected]);
+    const t = setTimeout(() => fetchAdmins(), 250);
+    return () => clearTimeout(t);
+  }, [debouncedSearch, pagination.currentPage, pagination.limit, fetchAdmins]);
 
-  // selection
-  const handleSelect = (id) => {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
+  /* ------------------------------- filters ------------------------------ */
 
-  const handleSelectAll = () => {
-    if (selectAll) {
-      setSelected([]);
-      setSelectAll(false);
-    } else {
-      setSelected(filtered.map((a) => a._id));
-      setSelectAll(true);
+  const filtered = useMemo(() => {
+    let list = admins;
+
+    if (statusTab !== "all") {
+      list = list.filter((a) =>
+        statusTab === "active" ? a.isActive : !a.isActive
+      );
     }
+
+    if (roleFilter !== "all") {
+      list = list.filter(
+        (a) => (a.roleKey || a.roleId?.key || "").toLowerCase() === roleFilter
+      );
+    }
+
+    const s = (debouncedSearch || "").toLowerCase();
+    if (s) {
+      list = list.filter((a) => {
+        const buckets = [
+          a?.email,
+          a?.firstName,
+          a?.lastName,
+          a?.roleKey,
+          a?.roleId?.name,
+          a?.roleId?.key,
+        ];
+        return buckets.some((v) =>
+          String(v || "")
+            .toLowerCase()
+            .includes(s)
+        );
+      });
+    }
+    return list;
+  }, [admins, statusTab, roleFilter, debouncedSearch]);
+
+  /* ------------------------------ selection ---------------------------- */
+
+  const visibleIds = useMemo(() => filtered.map((a) => a._id), [filtered]);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+
+  const toggleSelectAllVisible = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   };
 
-  // open/close modals
-  const resetForm = useCallback(() => {
-    setFormData({
-      email: "",
-      password: "",
-      firstName: "",
-      lastName: "",
-      phoneNo: "",
-      address: "",
-      country: "",
-      isActive: true,
-      sessionType: "password",
-      roleKey: "admin",
+  const toggleOne = (id, on) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
     });
-    setEditingId(null);
-    setEditingOriginal(null);
-    setEditingRoleKeyInitial(null);
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  /* ------------------------------- actions ------------------------------ */
+
+  const openAddEditModal = useCallback((row = null) => {
+    if (row) {
+      setFormData({
+        email: row.email || "",
+        password: "",
+        firstName: row.firstName || "",
+        lastName: row.lastName || "",
+        phoneNo: row.phoneNo || "",
+        address: row.address || "",
+        country: row.country || "",
+        isActive: !!row.isActive,
+        sessionType: row.sessionType || "password",
+        roleKey: row.roleKey || row.roleId?.key || "admin",
+      });
+      setEditingId(row._id);
+      setEditingOriginal(row);
+      setEditingRoleKeyInitial(row.roleKey || row.roleId?.key || "admin");
+    } else {
+      setFormData({
+        email: "",
+        password: "",
+        firstName: "",
+        lastName: "",
+        phoneNo: "",
+        address: "",
+        country: "",
+        isActive: true,
+        sessionType: "password",
+        roleKey: "admin",
+      });
+      setEditingId(null);
+      setEditingOriginal(null);
+      setEditingRoleKeyInitial(null);
+    }
+    setIsModalOpen(true);
   }, []);
 
-  const openAddEditModal = useCallback(
-    (adminRow = null) => {
-      if (adminRow) {
-        setFormData({
-          email: adminRow.email || "",
-          password: "",
-          firstName: adminRow.firstName || "",
-          lastName: adminRow.lastName || "",
-          phoneNo: adminRow.phoneNo || "",
-          address: adminRow.address || "",
-          country: adminRow.country || "",
-          isActive: !!adminRow.isActive,
-          sessionType: adminRow.sessionType || "password",
-          roleKey: adminRow.roleKey || adminRow.roleId?.key || "admin",
-        });
-        setEditingId(adminRow._id);
-        setEditingOriginal(adminRow);
-        setEditingRoleKeyInitial(
-          adminRow.roleKey || adminRow.roleId?.key || "admin"
-        );
-      } else {
-        resetForm();
-      }
-      setIsModalOpen(true);
-    },
-    [resetForm]
-  );
-
-  const handleDeleteClick = (adminRow) => {
-    setToDelete(adminRow);
+  const handleDeleteClick = (row) => {
+    setToDelete(row);
     setIsConfirmModalOpen(true);
   };
 
@@ -357,7 +369,7 @@ const AdminsPage = () => {
     setModalLoading(true);
     try {
       if (editingId) {
-        // 1) Update basic fields
+        // update
         const updateResponse = await fetchWithAuthAdmin({
           url: `/api/admin`,
           admin,
@@ -377,12 +389,10 @@ const AdminsPage = () => {
           },
           setAdmin,
         });
-
-        if (!updateResponse?.success) {
+        if (!updateResponse?.success)
           throw new Error(updateResponse?.message || "Update failed");
-        }
 
-        // 2) Assign role if changed
+        // role change
         const nextRoleKey = (formData.roleKey || "").trim();
         if (nextRoleKey && nextRoleKey !== editingRoleKeyInitial) {
           const roleResponse = await fetchWithAuthAdmin({
@@ -396,12 +406,11 @@ const AdminsPage = () => {
               roleKey: nextRoleKey,
             },
           });
-          if (!roleResponse?.success) {
+          if (!roleResponse?.success)
             throw new Error(roleResponse?.message || "Role assignment failed");
-          }
         }
 
-        // 3) Toggle active if changed
+        // active toggle
         if (editingOriginal && editingOriginal.isActive !== formData.isActive) {
           const statusResponse = await fetchWithAuthAdmin({
             url: `/api/admin`,
@@ -414,19 +423,15 @@ const AdminsPage = () => {
               isActive: !!formData.isActive,
             },
           });
-          if (!statusResponse?.success) {
+          if (!statusResponse?.success)
             throw new Error(statusResponse?.message || "Status update failed");
-          }
         }
 
-        // Show success message - prioritize API message
-        const successMessage = getSuccessMessage(
-          updateResponse,
-          "Admin updated successfully"
+        showSuccess(
+          getSuccessMessage(updateResponse, "Admin updated successfully")
         );
-        showSuccess(successMessage);
       } else {
-        // Create new admin
+        // create
         const createResponse = await fetchWithAuthAdmin({
           url: `/api/admin`,
           admin,
@@ -444,12 +449,10 @@ const AdminsPage = () => {
             roleKey: (formData.roleKey || "").trim() || "admin",
           },
         });
-
-        if (!createResponse?.success) {
+        if (!createResponse?.success)
           throw new Error(createResponse?.message || "Admin creation failed");
-        }
 
-        // If created as inactive in UI, reflect that with toggle call
+        // if created inactive, reflect
         if (formData.isActive === false && createResponse?.data?._id) {
           try {
             await fetchWithAuthAdmin({
@@ -463,25 +466,18 @@ const AdminsPage = () => {
                 isActive: false,
               },
             });
-          } catch (statusError) {
-            console.warn("Failed to set initial status:", statusError);
-          }
+          } catch {}
         }
 
-        // Show success message - prioritize API message
-        const successMessage = getSuccessMessage(
-          createResponse,
-          "Admin created successfully"
+        showSuccess(
+          getSuccessMessage(createResponse, "Admin created successfully")
         );
-        showSuccess(successMessage);
       }
 
       setIsModalOpen(false);
-      resetForm();
       await fetchAdmins();
-    } catch (error) {
-      const errorMessage = handleApiError(error, "Failed to save admin");
-      showError(errorMessage);
+    } catch (e) {
+      showError(handleApiError(e, "Failed to save admin"));
     } finally {
       setModalLoading(false);
     }
@@ -496,34 +492,25 @@ const AdminsPage = () => {
         method: "PUT",
         payload: { action: "toggleActive", adminId, isActive },
       });
-
-      if (!response?.success) {
+      if (!response?.success)
         throw new Error(response?.message || "Failed to update status");
-      }
-
-      console.log(response);
-
-      // Show API message if available, otherwise default
-      const successMessage = getSuccessMessage(
-        response,
-        isActive ? "Admin enabled successfully" : "Admin disabled successfully"
+      showSuccess(
+        getSuccessMessage(
+          response,
+          isActive
+            ? "Admin enabled successfully"
+            : "Admin disabled successfully"
+        )
       );
-      showSuccess(successMessage);
-
       await fetchAdmins();
-    } catch (error) {
-      const errorMessage = handleApiError(
-        error,
-        "Failed to update admin status"
-      );
-      showError(errorMessage);
+    } catch (e) {
+      showError(handleApiError(e, "Failed to update admin status"));
     }
   };
 
   const confirmDelete = async () => {
     if (!toDelete?._id) return;
     setIsConfirmModalOpen(false);
-
     try {
       const response = await fetchWithAuthAdmin({
         url: `/api/admin?_id=${toDelete._id}`,
@@ -531,93 +518,66 @@ const AdminsPage = () => {
         token,
         method: "DELETE",
       });
-
-      if (!response?.success) {
+      if (!response?.success)
         throw new Error(response?.message || "Delete failed");
-      }
-
-      // Show API message if available
-      const successMessage = getSuccessMessage(
-        response,
-        "Admin deleted successfully"
-      );
-      showSuccess(successMessage);
-
+      showSuccess(getSuccessMessage(response, "Admin deleted successfully"));
       setAdmins((prev) => prev.filter((x) => x._id !== toDelete._id));
-      setSelected((prev) => prev.filter((x) => x !== toDelete._id));
-    } catch (error) {
-      const errorMessage = handleApiError(error, "Failed to delete admin");
-      showError(errorMessage);
+      clearSelection();
+    } catch (e) {
+      showError(handleApiError(e, "Failed to delete admin"));
     } finally {
       setToDelete(null);
     }
   };
 
-  // Fixed bulk operations with proper message handling
   const bulkToggle = async (flag) => {
-    if (!selected.length) return;
-
+    if (selected.size === 0) return;
     try {
-      const promises = selected.map((id) =>
+      const promises = Array.from(selected).map((id) =>
         fetchWithAuthAdmin({
           url: `/api/admin`,
           admin,
           token,
           method: "PUT",
-          payload: {
-            action: "toggleActive",
-            adminId: id,
-            isActive: flag,
-          },
+          payload: { action: "toggleActive", adminId: id, isActive: flag },
         })
       );
-
       const results = await Promise.allSettled(promises);
-
-      // Check for failures
       const failures = results.filter(
-        (result) => result.status === "rejected" || !result.value?.success
+        (r) => r.status === "rejected" || !r.value?.success
       );
-
-      if (failures.length > 0) {
-        // Collect error messages
-        const errorMessages = failures.map((failure) => {
-          if (failure.status === "rejected") {
-            return failure.reason?.message || "Request failed";
-          }
-          return failure.value?.message || "Unknown error";
-        });
-        throw new Error(`Some operations failed: ${errorMessages.join(", ")}`);
+      if (failures.length) {
+        const msgs = failures.map(
+          (f) =>
+            (f.status === "rejected" ? f.reason?.message : f.value?.message) ||
+            "Error"
+        );
+        throw new Error(`Some operations failed: ${msgs.join(", ")}`);
       }
-
-      // Get success message from first successful response or use default
       const firstSuccess = results.find(
-        (result) => result.status === "fulfilled" && result.value?.success
+        (r) => r.status === "fulfilled" && r.value?.success
       );
-
-      const successMessage = getSuccessMessage(
-        firstSuccess?.value,
-        flag
-          ? "Selected admins enabled successfully"
-          : "Selected admins disabled successfully"
+      showSuccess(
+        getSuccessMessage(
+          firstSuccess?.value,
+          flag
+            ? "Selected admins enabled successfully"
+            : "Selected admins disabled successfully"
+        )
       );
-
-      showSuccess(successMessage);
-      setSelected([]);
+      clearSelection();
       await fetchAdmins();
-    } catch (error) {
-      const errorMessage = handleApiError(error, "Failed bulk operation");
-      showError(errorMessage);
+    } catch (e) {
+      showError(handleApiError(e, "Failed bulk operation"));
     }
   };
 
   const bulkDelete = async () => {
-    if (!selected.length) return;
-    if (!confirm(`Delete ${selected.length} admins? This cannot be undone.`))
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} admin(s)? This cannot be undone.`))
       return;
-
     try {
-      const promises = selected.map((id) =>
+      const promises = Array.from(selected).map((id) =>
         fetchWithAuthAdmin({
           url: `/api/admin?_id=${id}`,
           admin,
@@ -625,735 +585,836 @@ const AdminsPage = () => {
           method: "DELETE",
         })
       );
-
       const results = await Promise.allSettled(promises);
-
-      // Check for failures
       const failures = results.filter(
-        (result) => result.status === "rejected" || !result.value?.success
+        (r) => r.status === "rejected" || !r.value?.success
       );
-
-      if (failures.length > 0) {
-        const errorMessages = failures.map((failure) => {
-          if (failure.status === "rejected") {
-            return failure.reason?.message || "Request failed";
-          }
-          return failure.value?.message || "Unknown error";
-        });
-        throw new Error(`Some deletions failed: ${errorMessages.join(", ")}`);
+      if (failures.length) {
+        const msgs = failures.map(
+          (f) =>
+            (f.status === "rejected" ? f.reason?.message : f.value?.message) ||
+            "Error"
+        );
+        throw new Error(`Some deletions failed: ${msgs.join(", ")}`);
       }
-
-      // Get success message from first successful response
       const firstSuccess = results.find(
-        (result) => result.status === "fulfilled" && result.value?.success
+        (r) => r.status === "fulfilled" && r.value?.success
       );
-
-      const successMessage = getSuccessMessage(
-        firstSuccess?.value,
-        "Selected admins deleted successfully"
+      showSuccess(
+        getSuccessMessage(
+          firstSuccess?.value,
+          "Selected admins deleted successfully"
+        )
       );
-
-      showSuccess(successMessage);
-      setSelected([]);
+      clearSelection();
       await fetchAdmins();
-    } catch (error) {
-      const errorMessage = handleApiError(error, "Failed bulk delete");
-      showError(errorMessage);
+    } catch (e) {
+      showError(handleApiError(e, "Failed bulk delete"));
     }
   };
 
-  // pagination
-  const handlePageChange = useCallback(
-    (page) => {
-      if (page >= 1 && page <= pagination.totalPages) {
-        setPagination((prev) => ({ ...prev, currentPage: page }));
-      }
-    },
-    [pagination.totalPages]
-  );
+  /* ------------------------------ KPI tiles ----------------------------- */
 
-  // card
-  const AdminCard = ({ a, isSelected }) => {
-    const id = a._id;
-    return (
-      <div
-        className={`bg-white rounded border transition-all duration-200 gap-6 p-6 relative ${
-          isSelected
-            ? "border-primary"
-            : "border-zinc-200 hover:border-zinc-300"
-        }`}
-      >
-        {/* select */}
-        <div className="absolute top-4 right-4 z-10">
-          <div
-            onClick={() => handleSelect(id)}
-            className={`w-6 h-6 rounded border cursor-pointer transition-all duration-200 flex items-center justify-center ${
-              isSelected
-                ? "bg-primary border-primary"
-                : "border-zinc-300 hover:border-primary"
-            }`}
-            title={isSelected ? "Unselect" : "Select"}
-          >
-            {isSelected && (
-              <svg
-                className="w-4 h-4 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            )}
-          </div>
-        </div>
+  const kpis = useMemo(() => {
+    const total = filtered.length;
+    const active = filtered.filter((a) => a.isActive).length;
+    const inactive = total - active;
+    return { total, active, inactive };
+  }, [filtered]);
 
-        <div
-          className={`${
-            viewMode === "double"
-              ? "flex flex-col items-start"
-              : "flex items-start xl:items-center flex-col xl:flex-row xl:justify-between"
-          } gap-6`}
-        >
-          {/* left */}
-          <div className="flex flex-col xl:flex-row items-center gap-3 md:gap-5 xl:divide-x">
-            <div className="bg-zinc-100 rounded-md w-full max-w-28 h-32 p-3 lg:p-9 text-4xl text-zinc-700">
-              <FiUser className="w-full h-full" />
-            </div>
-            <div className="flex flex-col xl:pl-4">
-              <div
-                className={`w-fit text-xxs px-2 py-0.5 rounded border ${
-                  a.isActive
-                    ? "bg-green-200 border-green-500 text-zinc-800"
-                    : "bg-red-200 border-red-500 text-red-900"
-                }`}
-              >
-                {a.isActive ? "Currently Active" : "Currently Inactive"}
-              </div>
-              <h2 className="text-lg text-zinc-700 font-medium mt-1 text-left hover:underline">
-                {a.name ||
-                  `${a.firstName || ""} ${a.lastName || ""}`.trim() ||
-                  a.email}
-              </h2>
-              <p className="text-xs text-zinc-500 mb-2">{a.email}</p>
+  /* ------------------------------- render ------------------------------- */
 
-              {/* Actions dropdown (fixed: edit now opens modal) */}
-              <Dropdown
-                position="bottom"
-                options={[
-                  {
-                    value: "edit",
-                    label: (
-                      <div className="flex items-center gap-2 w-full">
-                        <FiEdit />
-                        Edit Admin
-                      </div>
-                    ),
-                  },
-                  {
-                    value: "delete",
-                    label: (
-                      <div className="flex items-center gap-2 w-full">
-                        <FiTrash2 />
-                        Delete Admin
-                      </div>
-                    ),
-                  },
-                  {
-                    value: "toggle",
-                    label: (
-                      <div className="flex items-center gap-2">
-                        {a.isActive ? <FiToggleLeft /> : <FiToggleRight />}
-                        {a.isActive ? "Disable" : "Enable"}
-                      </div>
-                    ),
-                  },
-                ]}
-                placeholder="Actions Menu"
-                onChange={(val) => {
-                  if (val === "edit") openAddEditModal(a);
-                  if (val === "delete") handleDeleteClick(a);
-                  if (val === "toggle") handleToggleActive(id, !a.isActive);
-                }}
-                className="w-48"
-              />
-            </div>
-          </div>
-
-          {/* right */}
-          <div
-            className={`flex-1 grid gap-3 ${
-              viewMode === "double"
-                ? "grid-cols-1 lg:grid-cols-3"
-                : "grid-cols-4"
-            }`}
-          >
-            <MiniCard title="Role" subLine={roleLabel(a)} />
-            <MiniCard title="Session Type" subLine={a.sessionType || "—"} />
-            <MiniCard title="Added" subLine={formatDate(a.createdAt)} />
-            <MiniCard title="Updated" subLine={formatDate(a.updatedAt)} />
-          </div>
-        </div>
-      </div>
-    );
-  };
-  AdminCard.propTypes = {
-    a: PropTypes.object.isRequired,
-    isSelected: PropTypes.bool.isRequired,
-  };
-
-  // pagination UI
-  const renderPagination = () => {
-    if (pagination.totalPages <= 1) return null;
-    const { currentPage, totalPages, total, limit } = pagination;
-    const startItem = (currentPage - 1) * limit + 1;
-    const endItem = Math.min(currentPage * limit, total);
-
-    return (
-      <div className="flex items-center justify-between mt-6 px-2">
-        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm text-zinc-700">
-              Showing <span className="font-medium">{startItem}</span> to{" "}
-              <span className="font-medium">
-                {Math.max(startItem, endItem)}
-              </span>{" "}
-              of <span className="font-medium">{total}</span> results
-            </p>
-          </div>
-          <div>
-            <nav
-              className="relative z-0 inline-flex rounded-md -space-x-px"
-              aria-label="Pagination"
-            >
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-zinc-300 bg-white text-sm font-medium text-zinc-500 hover:bg-zinc-50 disabled:opacity-50"
-              >
-                <span className="sr-only">Previous</span>
-                <FiChevronLeft className="h-5 w-5" />
-              </button>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(
-                  (p) =>
-                    p === 1 ||
-                    p === totalPages ||
-                    Math.abs(p - currentPage) <= 1
-                )
-                .map((p, idx, arr) => {
-                  const prev = arr[idx - 1];
-                  const showDots = prev && p - prev > 1;
-                  return (
-                    <React.Fragment key={p}>
-                      {showDots && (
-                        <span className="relative inline-flex items-center px-4 py-2 border border-zinc-300 bg-white text-sm font-medium text-zinc-700">
-                          ...
-                        </span>
-                      )}
-                      <button
-                        onClick={() => handlePageChange(p)}
-                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-colors ${
-                          currentPage === p
-                            ? "z-10 bg-zinc-100 border-zinc-500 text-zinc-600"
-                            : "bg-white border-zinc-300 text-zinc-500 hover:bg-zinc-50"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    </React.Fragment>
-                  );
-                })}
-
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-zinc-300 bg-white text-sm font-medium text-zinc-500 hover:bg-zinc-50 disabled:opacity-50"
-              >
-                <span className="sr-only">Next</span>
-                <FiChevronRight className="h-5 w-5" />
-              </button>
-            </nav>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // UI renderers
-  const renderGrid = () => {
-    if (loading) {
-      return (
-        <div className="flex justify-center items-center h-64">
-          <ImSpinner5 className="animate-spin text-zinc-400 text-4xl" />
-        </div>
-      );
-    }
-    if (filtered.length === 0) {
-      const isFiltered = Boolean(debouncedSearch);
-      return (
-        <div className="text-center py-12">
-          <div className="mx-auto w-24 h-24 flex items-center justify-center rounded-full bg-zinc-100 mb-4">
-            <FiUser className="h-10 w-10 text-zinc-400" />
-          </div>
-          <h3 className="text-lg font-medium text-zinc-900 mb-1">
-            {isFiltered ? "No matching admins" : "No admins yet"}
-          </h3>
-          <p className="text-zinc-500">
-            {isFiltered
-              ? "Try adjusting your search."
-              : "Get started by adding your first admin."}
-          </p>
-          {!isFiltered && (
-            <button
-              onClick={() => openAddEditModal()}
-              className="mt-6 inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-zinc-900 hover:bg-zinc-800"
-            >
-              <FiPlus className="h-4 w-4 mr-2" />
-              Add Admin
-            </button>
-          )}
-        </div>
-      );
-    }
-    return (
-      <div
-        className={`grid gap-5 ${
-          viewMode === "double" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
-        }`}
-      >
-        {filtered.map((a) => (
-          <AdminCard key={a._id} a={a} isSelected={selected.includes(a._id)} />
-        ))}
-      </div>
-    );
-  };
-
-  // main render
   return (
     <SidebarWrapper>
       <Header
-        title="Admins"
-        subtitle="Manage all your admins in one place."
-        buttonLabel="Add Admin"
-        onButtonClick={() => openAddEditModal()}
+        title="Admin Management"
+        subtitle="View, filter, and manage admin users, roles, and permissions."
+        hideButton
       />
 
-      {/* filter bar */}
-      <div className="w-full bg-zinc-50 border px-4 p-2 rounded mb-4">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            {/* view toggle */}
-            <div className="center-flex gap-2">
-              <div className="flex bg-zinc-200 rounded overflow-hidden p-1">
-                <button
-                  onClick={() => setViewMode("single")}
-                  className={`p-2 text-sm transition-all rounded-full ${
-                    viewMode === "single"
-                      ? "bg-white text-primary"
-                      : "text-zinc-600 hover:text-zinc-800"
-                  }`}
-                >
-                  <FiList size={16} />
-                </button>
-                <button
-                  onClick={() => setViewMode("double")}
-                  className={`p-2 text-sm transition-all rounded-full ${
-                    viewMode === "double"
-                      ? "bg-white text-primary"
-                      : "text-zinc-600 hover:text-zinc-800"
-                  }`}
-                >
-                  <FiGrid size={16} />
-                </button>
-              </div>
-            </div>
+      {/* KPI tiles (mirrors sessions page style) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mb-6">
+        <MiniCard
+          title="Total admins"
+          subLine={kpis.total}
+          size="lg"
+          style="medium"
+        />
+        <MiniCard
+          title="Active Admins"
+          subLine={kpis.active}
+          size="lg"
+          style="medium"
+        />
+        <MiniCard
+          title="Disabled Admins"
+          subLine={kpis.inactive}
+          size="lg"
+          style="medium"
+        />
+      </div>
 
-            {/* search */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search admins by name, email or role…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full px-4 py-2 border border-zinc-300 outline-none rounded text-sm bg-white"
-              />
-            </div>
+      {/* Toolbar */}
+      <div className="bg-white border border-zinc-200 rounded p-3 mb-3">
+        <div className="flex flex-col md:flex-row gap-3 md:items-center">
+          <div className="flex-1 relative">
+            <FiSearch className="absolute left-3 top-2.5 text-zinc-400" />
+            <input
+              aria-label="Search admins"
+              className={`pl-9 ${inputStyles}`}
+              placeholder="Search by name, email, role…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPagination((p) => ({ ...p, currentPage: 1 }));
+              }}
+            />
           </div>
 
-          {/* selection + bulk actions */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div
-              onClick={handleSelectAll}
-              className="text-sm text-primary cursor-pointer"
+          <div className="flex gap-2">
+            <Dropdown
+              options={[
+                { value: "all", label: "All status" },
+                { value: "active", label: "Active" },
+                { value: "disabled", label: "Disabled" },
+              ]}
+              value={statusTab}
+              onChange={(v) => {
+                setStatusTab(v);
+                setPagination((p) => ({ ...p, currentPage: 1 }));
+              }}
+              size="md"
+              position="bottom"
+            />
+            <Dropdown
+              options={[
+                { value: "all", label: "All roles" },
+                ...roles.map((r) => ({
+                  value: (r.key || r.slug || "").toLowerCase(),
+                  label: r.name || r.key,
+                })),
+              ]}
+              value={roleFilter}
+              onChange={(v) => {
+                setRoleFilter(v);
+                setPagination((p) => ({ ...p, currentPage: 1 }));
+              }}
+              size="md"
+              position="bottom"
+            />
+            <Dropdown
+              options={[10, 20, 50].map((n) => ({
+                value: String(n),
+                label: `${n} / page`,
+              }))}
+              value={String(pagination.limit)}
+              onChange={(v) =>
+                setPagination((p) => ({
+                  ...p,
+                  limit: Number(v),
+                  currentPage: 1,
+                }))
+              }
+              size="md"
+              position="bottom"
+            />
+            <button
+              onClick={() => fetchAdmins()}
+              className="btn btn-sm btn-primary gap-2"
             >
-              Select All
-            </div>
-            <div
-              onClick={handleSelectAll}
-              className={`w-6 h-6 rounded border cursor-pointer transition-all duration-200 flex items-center justify-center ${
-                selected.length > 0
-                  ? "bg-primary border-primary"
-                  : "border-zinc-300 hover:border-primary"
-              }`}
+              <FiRefreshCw />
+              Refresh
+            </button>
+            <button
+              onClick={() => openAddEditModal()}
+              className="btn btn-xs btn-primary-third"
             >
-              {selected.length > 0 && (
-                <svg
-                  className="w-4 h-4 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              )}
-            </div>
-            {selected.length > 0 && (
-              <Dropdown
-                position="bottom"
-                options={[
-                  {
-                    value: "disable",
-                    label: (
-                      <div className="flex items-center gap-2 w-full">
-                        <FiToggleLeft />
-                        Disable ({selected.length})
-                      </div>
-                    ),
-                  },
-                  {
-                    value: "enable",
-                    label: (
-                      <div className="flex items-center gap-2 w-full">
-                        <FiToggleRight />
-                        Enable ({selected.length})
-                      </div>
-                    ),
-                  },
-                  {
-                    value: "delete",
-                    label: (
-                      <div className="flex items-center gap-2 w-full">
-                        <FiTrash2 />
-                        Delete ({selected.length})
-                      </div>
-                    ),
-                  },
-                ]}
-                placeholder="Bulk Actions"
-                onChange={(val) => {
-                  if (val === "disable") bulkToggle(false);
-                  if (val === "enable") bulkToggle(true);
-                  if (val === "delete") bulkDelete();
-                }}
-                className="w-48"
-              />
-            )}
+              <FiPlus />
+              New Admin
+            </button>
           </div>
         </div>
       </div>
 
-      {/* grid */}
-      <div className="mt-6">{renderGrid()}</div>
+      {/* Bulk bar (visible when selection not empty) */}
+      {selected.size > 0 && (
+        <div className="sticky top-2 z-10 bg-amber-50 border border-amber-200 text-amber-900 rounded p-2 mb-3 flex items-center gap-2">
+          <span className="px-2 py-1 rounded-sm text-primary text-xs">
+            {selected.size} Selected
+          </span>
+          <button
+            onClick={() => bulkToggle(false)}
+            className="btn px-2 py-1 rounded-sm text-xs center-flex gap-2 border border-zinc-300 bg-white hover:bg-zinc-50"
+          >
+            <FiToggleLeft />
+            Disable
+          </button>
+          <button
+            onClick={() => bulkToggle(true)}
+            className="btn px-2 py-1 rounded-sm text-xs center-flex gap-2 border border-zinc-300 bg-white hover:bg-zinc-50"
+          >
+            <FiToggleRight />
+            Enable
+          </button>
+          <button
+            onClick={bulkDelete}
+            className="btn px-2 py-1 rounded-sm text-white text-xs center-flex gap-2 bg-red-500 hover:bg-red-600"
+          >
+            <FiTrash2 />
+            Delete
+          </button>
+          <button
+            onClick={clearSelection}
+            className="btn btn-xs hover:bg-amber-200 ml-auto text-xs text-amber-900/70 hover:underline rounded-sm"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
-      {/* pagination */}
-      {renderPagination()}
+      {/* Content */}
+      {error ? (
+        <div className="border border-rose-200 bg-rose-50 text-rose-800 rounded p-4">
+          {error}
+        </div>
+      ) : loading && filtered.length === 0 ? (
+        <Skeleton />
+      ) : filtered.length === 0 ? (
+        <Empty
+          onRefresh={() => fetchAdmins()}
+          onCreate={() => openAddEditModal()}
+        />
+      ) : (
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <AdminsTable
+              rows={filtered}
+              selected={selected}
+              onToggleOne={toggleOne}
+              onToggleAllVisible={toggleSelectAllVisible}
+              allVisibleSelected={allVisibleSelected}
+              onEdit={(row) => openAddEditModal(row)}
+              onToggleActive={(row) =>
+                handleToggleActive(row._id, !row.isActive)
+              }
+              onDelete={(row) => handleDeleteClick(row)}
+            />
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden">
+            <AdminCards
+              rows={filtered}
+              selected={selected}
+              onToggleOne={toggleOne}
+              onEdit={(row) => openAddEditModal(row)}
+              onToggleActive={(row) =>
+                handleToggleActive(row._id, !row.isActive)
+              }
+              onDelete={(row) => handleDeleteClick(row)}
+            />
+          </div>
+
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between">
+              <div className="text-xs text-zinc-500">
+                Page {pagination.currentPage} of {pagination.totalPages} · Total{" "}
+                {pagination.total}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={pagination.currentPage <= 1}
+                  onClick={() =>
+                    setPagination((p) => ({
+                      ...p,
+                      currentPage: Math.max(1, p.currentPage - 1),
+                    }))
+                  }
+                  className="rounded-xl border px-3 py-1.5 text-sm disabled:opacity-50 hover:bg-zinc-50"
+                >
+                  Prev
+                </button>
+                <button
+                  disabled={pagination.currentPage >= pagination.totalPages}
+                  onClick={() =>
+                    setPagination((p) => ({
+                      ...p,
+                      currentPage: Math.min(p.totalPages, p.currentPage + 1),
+                    }))
+                  }
+                  className="rounded-xl border px-3 py-1.5 text-sm disabled:opacity-50 hover:bg-zinc-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Add/Edit Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-            onClick={() => setIsModalOpen(false)}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            className="bg-white p-6 rounded-xl shadow-lg w-full max-w-3xl"
+            onClick={(e) => e.stopPropagation()}
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white p-6 rounded-xl shadow-lg w-full max-w-3xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-xl font-bold mb-4">
-                {editingId ? "Edit Admin" : "Add New Admin"}
-              </h2>
+            <h2 className="text-xl font-bold mb-4">
+              {editingId ? "Edit Admin" : "Add New Admin"}
+            </h2>
 
-              {modalLoading ? (
-                <div className="flex justify-center items-center py-12">
-                  <ImSpinner5 className="animate-spin text-gray-500 text-3xl" />
-                </div>
-              ) : (
-                <form onSubmit={handleFormSubmit}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex-1">
-                      <label className={labelStyles("base")}>Email</label>
-                      <input
-                        name="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) =>
-                          setFormData((p) => ({ ...p, email: e.target.value }))
-                        }
-                        placeholder="admin@domain.com"
-                        className={inputStyles}
-                        disabled={!!editingId}
-                        required
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className={labelStyles("base")}>
-                        Password {editingId ? "(not changeable here)" : ""}
-                      </label>
-                      <input
-                        name="password"
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            password: e.target.value,
-                          }))
-                        }
-                        placeholder={
-                          editingId
-                            ? "Password reset not supported in this form"
-                            : "Set a strong password"
-                        }
-                        className={inputStyles}
-                        required={!editingId}
-                        disabled={!!editingId}
-                      />
-                    </div>
+            {modalLoading ? (
+              <div className="flex justify-center items-center py-12">
+                <ImSpinner5 className="animate-spin text-gray-500 text-3xl" />
+              </div>
+            ) : (
+              <form onSubmit={handleFormSubmit}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex-1">
+                    <label className={labelStyles("base")}>Email</label>
+                    <input
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) =>
+                        setFormData((p) => ({ ...p, email: e.target.value }))
+                      }
+                      placeholder="admin@domain.com"
+                      className={inputStyles}
+                      disabled={!!editingId}
+                      required
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className={labelStyles("base")}>
+                      Password {editingId ? "(not changeable here)" : ""}
+                    </label>
+                    <input
+                      name="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) =>
+                        setFormData((p) => ({ ...p, password: e.target.value }))
+                      }
+                      placeholder={
+                        editingId
+                          ? "Password reset not supported in this form"
+                          : "Set a strong password"
+                      }
+                      className={inputStyles}
+                      required={!editingId}
+                      disabled={!!editingId}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles("base")}>First Name</label>
+                    <input
+                      name="firstName"
+                      value={formData.firstName}
+                      onChange={(e) =>
+                        setFormData((p) => ({
+                          ...p,
+                          firstName: e.target.value,
+                        }))
+                      }
+                      className={inputStyles}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles("base")}>Last Name</label>
+                    <input
+                      name="lastName"
+                      value={formData.lastName}
+                      onChange={(e) =>
+                        setFormData((p) => ({ ...p, lastName: e.target.value }))
+                      }
+                      className={inputStyles}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles("base")}>Phone</label>
+                    <input
+                      name="phoneNo"
+                      value={formData.phoneNo}
+                      onChange={(e) =>
+                        setFormData((p) => ({
+                          ...p,
+                          phoneNo: e.target.value.slice(0, 11),
+                        }))
+                      }
+                      maxLength={11}
+                      className={inputStyles}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles("base")}>Address</label>
+                    <input
+                      name="address"
+                      value={formData.address}
+                      onChange={(e) =>
+                        setFormData((p) => ({ ...p, address: e.target.value }))
+                      }
+                      className={inputStyles}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles("base")}>Role</label>
+                    <DropdownSearch
+                      name="roleKey"
+                      value={formData.roleKey}
+                      onChange={(val) =>
+                        setFormData((p) => ({ ...p, roleKey: val }))
+                      }
+                      options={roles.map((role) => ({
+                        label: role.name,
+                        value: role.key,
+                      }))}
+                      placeholder="Select a role"
+                      searchPlaceholder="Search roles..."
+                    />
+                    <p className="text-xxs text-zinc-500 mt-1">
+                      Must match an existing role <code>key</code> in your DB.
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelStyles("base")}>Country</label>
+                    <DropdownSearch
+                      name="country"
+                      value={formData.country}
+                      onChange={(val) =>
+                        setFormData((p) => ({ ...p, country: val }))
+                      }
+                      options={[
+                        { value: "PK", label: "Pakistan" },
+                        { value: "US", label: "United States" },
+                        { value: "GB", label: "United Kingdom" },
+                        { value: "CA", label: "Canada" },
+                        { value: "AU", label: "Australia" },
+                        { value: "DE", label: "Germany" },
+                        { value: "FR", label: "France" },
+                        { value: "IT", label: "Italy" },
+                        { value: "ES", label: "Spain" },
+                        { value: "BR", label: "Brazil" },
+                        { value: "IN", label: "India" },
+                        { value: "CN", label: "China" },
+                        { value: "JP", label: "Japan" },
+                        { value: "KR", label: "South Korea" },
+                        { value: "RU", label: "Russia" },
+                        { value: "ZA", label: "South Africa" },
+                      ]}
+                      placeholder="Select a country"
+                      searchPlaceholder="Search countries..."
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <ToggleLiver
+                      key={formData.firstName}
+                      checked={formData.isActive}
+                      onChange={(checked) =>
+                        setFormData((p) => ({ ...p, isActive: checked }))
+                      }
+                    />{" "}
                     <div>
-                      <label className={labelStyles("base")}>First Name</label>
-                      <input
-                        name="firstName"
-                        value={formData.firstName}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            firstName: e.target.value,
-                          }))
-                        }
-                        className={inputStyles}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelStyles("base")}>Last Name</label>
-                      <input
-                        name="lastName"
-                        value={formData.lastName}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            lastName: e.target.value,
-                          }))
-                        }
-                        className={inputStyles}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelStyles("base")}>Phone</label>
-                      <input
-                        name="phoneNo"
-                        value={formData.phoneNo}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            phoneNo: e.target.value.slice(0, 11),
-                          }))
-                        }
-                        maxLength={11}
-                        className={inputStyles}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelStyles("base")}>Address</label>
-                      <input
-                        name="address"
-                        value={formData.address}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            address: e.target.value,
-                          }))
-                        }
-                        className={inputStyles}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelStyles("base")}>Role Key</label>
-                      <DropdownSearch
-                        name="roleKey"
-                        value={formData.roleKey}
-                        onChange={(val) =>
-                          setFormData((p) => ({
-                            ...p,
-                            roleKey: val,
-                          }))
-                        }
-                        options={roles.map((role) => ({
-                          label: role.name,
-                          value: role.key,
-                        }))}
-                        placeholder="Select a role"
-                        searchPlaceholder="Search roles..."
-                      />
-                      <p className="text-xxs text-zinc-500 mt-1">
-                        Must match an existing role <code>key</code> in your DB.
+                      <p className="text-sm text-zinc-800">
+                        {formData.isActive ? "Active" : "Inactive"}
                       </p>
-                    </div>{" "}
-                    <div>
-                      <label className={labelStyles("base")}>Country</label>
-                      <DropdownSearch
-                        name="country"
-                        value={formData.country}
-                        onChange={(val) =>
-                          setFormData((p) => ({
-                            ...p,
-                            country: val,
-                          }))
-                        }
-                        options={[
-                          { value: "PK", label: "Pakistan" },
-                          { value: "US", label: "United States" },
-                          { value: "GB", label: "United Kingdom" },
-                          { value: "CA", label: "Canada" },
-                          { value: "AU", label: "Australia" },
-                          { value: "DE", label: "Germany" },
-                          { value: "FR", label: "France" },
-                          { value: "IT", label: "Italy" },
-                          { value: "ES", label: "Spain" },
-                          { value: "BR", label: "Brazil" },
-                          { value: "IN", label: "India" },
-                          { value: "CN", label: "China" },
-                          { value: "JP", label: "Japan" },
-                          { value: "KR", label: "South Korea" },
-                          { value: "RU", label: "Russia" },
-                          { value: "ZA", label: "South Africa" },
-                        ]}
-                        placeholder="Select a country"
-                        searchPlaceholder="Search countries..."
-                      />
-                    </div>{" "}
-                    <div className="flex items-center gap-4">
-                      <label
-                        htmlFor="isActiveToggle"
-                        className="relative inline-flex items-center cursor-pointer"
-                      >
-                        <input
-                          id="isActiveToggle"
-                          type="checkbox"
-                          name="isActive"
-                          checked={formData.isActive}
-                          onChange={(e) =>
-                            setFormData((p) => ({
-                              ...p,
-                              isActive: e.target.checked,
-                            }))
-                          }
-                          className="sr-only peer"
-                        />
-                        <div className="w-12 h-6 bg-zinc-300 peer-focus:outline-none peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[3px] after:bg-white after:border-gray-300 after:border after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                      </label>
-                      <div>
-                        <p className="text-sm text-zinc-800">
-                          {formData.isActive ? "Active" : "Inactive"}
-                        </p>
-                        <p className="text-xs text-zinc-600">
-                          {formData.isActive
-                            ? "This admin can sign in"
-                            : "This admin is disabled"}
-                        </p>
-                      </div>
+                      <p className="text-xs text-zinc-600">
+                        {formData.isActive
+                          ? "This admin can sign in"
+                          : "This admin is disabled"}
+                      </p>
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-300 rounded-lg hover:bg-zinc-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={modalLoading}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {modalLoading && (
-                        <ImSpinner5 className="animate-spin h-4 w-4" />
-                      )}
-                      {editingId ? "Update Admin" : "Create Admin"}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="btn btn-sm lg:btn-md hover:bg-zinc-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={modalLoading}
+                    className="btn btn-sm lg:btn-md btn-primary-third disabled:opacity-50"
+                  >
+                    {modalLoading && (
+                      <ImSpinner5 className="animate-spin h-4 w-4" />
+                    )}
+                    {editingId ? "Update Admin" : "Create Admin"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Confirm Delete Modal */}
-      <AnimatePresence>
-        {isConfirmModalOpen && toDelete && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 overflow-y-auto bg-zinc-900/80 flex justify-center items-center p-4"
-            onClick={() => setIsConfirmModalOpen(false)}
+      {isConfirmModalOpen && toDelete && (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-zinc-900/80 flex justify-center items-center p-4"
+          onClick={() => setIsConfirmModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
-                <FiTrash2 className="h-6 w-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-medium text-zinc-900 text-center mb-2">
-                Delete Admin
-              </h3>
-              <p className="text-sm text-zinc-600 text-center mb-6">
-                Are you sure you want to delete{" "}
-                <strong>{toDelete.email}</strong>? This action cannot be undone.
-              </p>
-              <div className="space-y-3">
-                <button
-                  onClick={confirmDelete}
-                  className="w-full flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => setIsConfirmModalOpen(false)}
-                  className="w-full flex justify-center items-center px-4 py-2 border border-zinc-300 text-sm font-medium rounded-md text-zinc-700 bg-white hover:bg-zinc-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
+              <FiTrash2 className="h-6 w-6 text-red-600" />
+            </div>
+            <h3 className="text-lg font-medium text-zinc-900 text-center mb-2">
+              Delete Admin
+            </h3>
+            <p className="text-sm text-zinc-600 text-center mb-6">
+              Are you sure you want to delete <strong>{toDelete.email}</strong>?
+              This action cannot be undone.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={confirmDelete}
+                className="w-full flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="w-full flex justify-center items-center px-4 py-2 border border-zinc-300 text-sm font-medium rounded-md text-zinc-700 bg-white hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </SidebarWrapper>
   );
-};
+}
 
-export default AdminsPage;
+/* ------------------------------ components ------------------------------ */
+
+function Kpi({ label, value }) {
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-3">
+      <p className="text-xs uppercase text-zinc-500 font-semibold">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-zinc-900">{value}</p>
+    </div>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div className="space-y-3">
+      {[...Array(6)].map((_, i) => (
+        <div
+          key={i}
+          className="h-20 bg-zinc-100 animate-pulse rounded border border-zinc-200"
+        />
+      ))}
+    </div>
+  );
+}
+
+function Empty({ onRefresh, onCreate }) {
+  return (
+    <div className="text-center py-20 border border-zinc-200 rounded bg-white">
+      <p className="text-zinc-800 font-medium">No admins found</p>
+      <p className="text-sm text-zinc-600 mt-1">
+        Try clearing the search or create a new admin.
+      </p>
+      <div className="mt-4 flex gap-2 justify-center">
+        <button onClick={onRefresh} className="btn btn-xs btn-second">
+          <FiRefreshCw className="inline mr-1" />
+          Refresh
+        </button>
+        <button onClick={onCreate} className="btn btn-xs btn-primary">
+          <FiPlus className="inline mr-1" />
+          New Admin
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------- TABLE --------------------------------- */
+
+function AdminsTable({
+  rows,
+  selected,
+  onToggleOne,
+  onToggleAllVisible,
+  allVisibleSelected,
+  onEdit,
+  onToggleActive,
+  onDelete,
+}) {
+  const grouped = useMemo(() => {
+    // Group by role to add a little structure (optional)
+    return rows.reduce((acc, r) => {
+      const key = (r.roleId?.name || r.roleKey || "Other").toString();
+      (acc[key] = acc[key] || []).push(r);
+      return acc;
+    }, {});
+  }, [rows]);
+
+  return (
+    <div className="border border-zinc-200 rounded overflow-hidden">
+      <table className="w-full border-collapse">
+        <thead className="bg-zinc-50 sticky top-0 z-[1] border-b border-zinc-200">
+          <tr>
+            <th className="text-left text-xs font-semibold text-zinc-600 uppercase px-3 py-2 w-10">
+              <Checkbox
+                selected={allVisibleSelected}
+                onChange={onToggleAllVisible}
+              />
+            </th>
+            <th className="text-left text-xs font-semibold text-zinc-600 uppercase px-3 py-2">
+              Admin
+            </th>
+            <th className="text-left text-xs font-semibold text-zinc-600 uppercase px-3 py-2">
+              Role
+            </th>
+            <th className="text-left text-xs font-semibold text-zinc-600 uppercase px-3 py-2">
+              Status
+            </th>
+            <th className="text-left text-xs font-semibold text-zinc-600 uppercase px-3 py-2">
+              Created
+            </th>
+            <th className="px-3 py-2 w-40" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-200">
+          {Object.entries(grouped).map(([group, items]) => (
+            <React.Fragment key={group}>
+              <tr className="bg-zinc-100">
+                <td colSpan={6} className="px-3 py-2 text-sm text-zinc-700">
+                  <span className="inline-flex items-center gap-1 mr-2">
+                    <FiChevronDown />
+                    <span className="font-medium">{group}</span>
+                    <span className="text-zinc-500">
+                      · {items.length} admin(s)
+                    </span>
+                  </span>
+                </td>
+              </tr>
+              {items.map((a) => (
+                <tr key={a._id} className="w-full hover:bg-zinc-50">
+                  <td className="px-3 py-2 align-top">
+                    <Checkbox
+                      selected={selected.has(a._id)}
+                      onChange={() => onToggleOne(a._id, !selected.has(a._id))}
+                    />
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-zinc-100 rounded-md w-10 h-10 p-2 text-zinc-700 flex items-center justify-center">
+                        <FiUser />
+                      </div>
+                      <div>
+                        <div className="text-sm text-zinc-900">
+                          {a.name ||
+                            `${a.firstName || ""} ${a.lastName || ""}`.trim() ||
+                            a.email}
+                        </div>
+                        <div className="text-xs text-zinc-500">{a.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 align-top text-sm">
+                    {roleLabel(a)}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <span
+                      className={`text-xs border px-2 py-0.5 rounded ${
+                        a.isActive
+                          ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                          : "text-rose-700 bg-rose-50 border-rose-200"
+                      }`}
+                    >
+                      {a.isActive ? "Active" : "Disabled"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 align-top text-sm">
+                    {formatDate(a.createdAt)}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <RowActions
+                      row={a}
+                      onEdit={onEdit}
+                      onToggleActive={onToggleActive}
+                      onDelete={onDelete}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RowActions({ row, onEdit, onToggleActive, onDelete }) {
+  const options = [
+    {
+      value: "edit",
+      label: (
+        <span className="flex items-center gap-2">
+          <FiEdit className="text-zinc-500" />
+          Edit
+        </span>
+      ),
+    },
+    {
+      value: "toggle",
+      label: (
+        <span className="flex items-center gap-2">
+          {row.isActive ? (
+            <FiToggleLeft className="text-zinc-500" />
+          ) : (
+            <FiToggleRight className="text-zinc-500" />
+          )}
+          {row.isActive ? "Disable" : "Enable"}
+        </span>
+      ),
+    },
+    {
+      value: "delete",
+      label: (
+        <span className="flex items-center gap-2">
+          <FiTrash2 className="text-rose-500" />
+          Delete
+        </span>
+      ),
+    },
+  ];
+
+  const handleChange = (value) => {
+    if (value === "edit") onEdit(row);
+    else if (value === "toggle") onToggleActive(row);
+    else if (value === "delete") onDelete(row);
+  };
+
+  return (
+    <Dropdown
+      options={options}
+      value={null}
+      onChange={handleChange}
+      position="top-right"
+      size="sm"
+      placeholder="Actions"
+    />
+  );
+}
+
+/* ------------------------------- CARDS --------------------------------- */
+
+function AdminCards({
+  rows,
+  selected,
+  onToggleOne,
+  onEdit,
+  onToggleActive,
+  onDelete,
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4">
+      {rows.map((a) => (
+        <article
+          key={a._id}
+          className="border border-zinc-200 rounded-lg p-3 bg-white"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selected.has(a._id)}
+                onChange={(e) => onToggleOne(a._id, e.target.checked)}
+              />
+              <div>
+                <div className="text-sm text-zinc-900">
+                  {a.name ||
+                    `${a.firstName || ""} ${a.lastName || ""}`.trim() ||
+                    a.email}
+                </div>
+                <div className="text-xs text-zinc-500">{a.email}</div>
+              </div>
+            </label>
+            <span
+              className={`text-xs border px-2 py-0.5 rounded ${
+                a.isActive
+                  ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                  : "text-rose-700 bg-rose-50 border-rose-200"
+              }`}
+            >
+              {a.isActive ? "Active" : "Disabled"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mt-3">
+            <Cell label="Role" value={roleLabel(a)} />
+            <Cell label="Session Type" value={a.sessionType || "—"} />
+            <Cell label="Added" value={formatDate(a.createdAt)} />
+            <Cell label="Updated" value={formatDate(a.updatedAt)} />
+          </div>
+
+          <div className="flex items-center gap-2 mt-3 justify-end">
+            <button
+              onClick={() =>
+                navigator.clipboard.writeText(a.email).catch(() => {})
+              }
+              className="text-xs px-2 py-1 border border-zinc-300 rounded bg-white hover:bg-zinc-50"
+            >
+              <FiCopy className="inline mr-1" />
+              Copy email
+            </button>
+            <button
+              onClick={() => onEdit(a)}
+              className="text-xs px-2 py-1 border border-zinc-300 rounded bg-white hover:bg-zinc-50"
+            >
+              <FiEdit2 className="inline mr-1" />
+              Edit
+            </button>
+            <button
+              onClick={() => onToggleActive(a)}
+              className="text-xs px-2 py-1 border border-zinc-300 rounded bg-white hover:bg-zinc-50"
+            >
+              {a.isActive ? (
+                <FiToggleLeft className="inline mr-1" />
+              ) : (
+                <FiToggleRight className="inline mr-1" />
+              )}
+              {a.isActive ? "Disable" : "Enable"}
+            </button>
+            <button
+              onClick={() => onDelete(a)}
+              className="text-xs px-2 py-1 rounded border border-rose-300 text-rose-700 bg-white hover:bg-rose-50"
+            >
+              <FiTrash2 className="inline mr-1" />
+              Delete
+            </button>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function Cell({ label, value }) {
+  return (
+    <div className="bg-zinc-50 border border-zinc-200 rounded p-2">
+      <p className="text-[10px] font-semibold text-zinc-500 uppercase">
+        {label}
+      </p>
+      <p className="text-xs text-zinc-800 break-all">{value ?? "—"}</p>
+    </div>
+  );
+}

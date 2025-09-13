@@ -330,6 +330,11 @@ export async function POST(request) {
           );
         }
       }
+      const userAgent = request.headers.get("user-agent") || "";
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0] ||
+        request.headers.get("x-real-ip") ||
+        "";
 
       // Create session
       const jti = crypto.randomUUID();
@@ -337,11 +342,11 @@ export async function POST(request) {
         actorType: "admin",
         adminId: user._id,
         jti,
-        userAgent: body?.userAgent || "",
-        ip: body?.ip || "",
+        userAgent,
+        ip,
         startedAt: now(),
         lastActiveAt: now(),
-        expiresAt: inDays(7),
+        expiresAt: inDays(settings.admin.sessionDuration || 7),
       });
 
       // Get permissions for JWT

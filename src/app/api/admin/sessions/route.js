@@ -8,6 +8,8 @@ import {
   requireOwner,
   requirePermission,
 } from "@/lib/withAuthFunctions";
+import Admin from "@/models/Admin";
+const bcrypt = require("bcryptjs");
 
 // helpers
 const parseBool = (v, def = false) =>
@@ -208,13 +210,94 @@ export async function GET(request) {
   }
 }
 
-/** ------------------------------ DELETE -------------------------------- **/
 export async function DELETE(request) {
   try {
     await dbConnect();
 
-    const authData = await adminReqWithAuth(request.headers);
+    const url = new URL(request.url);
+    const { searchParams } = url;
+
+    // Parse body ONCE and reuse
     const body = await request.json().catch(() => ({}));
+
+    // Accept action from body (preferred) or query string (fallback)
+    const action = body.action || searchParams.get("action");
+
+    // --- Admin session limit path (re-auth) ---
+    if (action === "admin-sessions-limit-reached") {
+      console.log("BODY WHEN WITH ACTIOB", body);
+      // Accept creds from body (preferred) or query string
+      const adminEmail = body.email;
+      const password = body.password;
+
+      if (!adminEmail || !password) {
+        return NextResponse.json(
+          { success: false, message: "Email and password required" },
+          { status: 400 }
+        );
+      }
+
+      // Load admin; if your Admin schema excludes password by default, enable it explicitly
+      const admin = await Admin.findOne({ email: adminEmail }).select(
+        "email passwordHash firstName lastName"
+      );
+
+      if (!admin) {
+        return NextResponse.json(
+          { success: false, message: "Admin not found" },
+          { status: 404 }
+        );
+      }
+      console.log("compairing theys", password, "with", admin.passwordHash);
+      const passwordMatch = await bcrypt.compare(
+        String(password),
+        String(admin.passwordHash)
+      );
+      if (!passwordMatch) {
+        return NextResponse.json(
+          { success: false, message: "Invalid credentials" },
+          { status: 401 }
+        );
+      }
+
+      const { sessionIds = [] } = body;
+      if (!Array.isArray(sessionIds) || !sessionIds.length) {
+        return NextResponse.json(
+          { success: false, message: "No valid sessionIds provided" },
+          { status: 400 }
+        );
+      }
+
+      const ids = sessionIds.filter((id) =>
+        mongoose.Types.ObjectId.isValid(id)
+      );
+      if (!ids.length) {
+        return NextResponse.json(
+          { success: false, message: "No valid sessionIds provided" },
+          { status: 400 }
+        );
+      }
+
+      const filter = {
+        actorType: "admin",
+        adminId: admin._id,
+        _id: { $in: ids },
+        endedAt: null,
+      };
+
+      const res = await AdminSession.updateMany(filter, {
+        $set: { revoked: true, endedAt: new Date() },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Sessions terminated",
+        data: { modified: res.modifiedCount },
+      });
+    }
+
+    // --- Normal authenticated delete path (unchanged logic, but reuse parsed `body`) ---
+    const authData = await adminReqWithAuth(request.headers);
 
     const requesterId = String(authData.admin._id);
     const currentJti =
@@ -225,10 +308,10 @@ export async function DELETE(request) {
 
     const {
       sessionIds = [],
-      adminId, // optional: target scope
+      adminId,
       revokeAllOthers = false,
-      status, // optional: 'active' | 'revoked' | 'expired'
-      olderThan, // optional ISO string: revoke sessions started before this date
+      status,
+      olderThan,
     } = body || {};
 
     const targetAdminId =
@@ -236,7 +319,6 @@ export async function DELETE(request) {
         ? adminId
         : requesterId;
 
-    // Authorization for terminating another admin's sessions
     if (targetAdminId !== requesterId) {
       try {
         requireOwner(authData);
@@ -248,10 +330,9 @@ export async function DELETE(request) {
     const baseFilter = {
       actorType: "admin",
       adminId: new mongoose.Types.ObjectId(targetAdminId),
-      endedAt: null, // only sessions not already ended
+      endedAt: null,
     };
 
-    // A) Revoke all others
     if (revokeAllOthers) {
       const filter = { ...baseFilter, revoked: false };
       if (currentJti) filter.jti = { $ne: currentJti };
@@ -265,7 +346,6 @@ export async function DELETE(request) {
       });
     }
 
-    // B) Revoke explicit sessionIds
     if (Array.isArray(sessionIds) && sessionIds.length > 0) {
       const ids = sessionIds.filter((id) =>
         mongoose.Types.ObjectId.isValid(id)
@@ -288,7 +368,6 @@ export async function DELETE(request) {
       });
     }
 
-    // C) Revoke by criteria (status / olderThan)
     if (status || olderThan) {
       const now = new Date();
       const filter = { ...baseFilter };
@@ -299,7 +378,6 @@ export async function DELETE(request) {
       } else if (status === "expired") {
         Object.assign(filter, { revoked: false, expiresAt: { $lte: now } });
       } else {
-        // default guard
         Object.assign(filter, { revoked: false });
       }
       if (olderThan) {

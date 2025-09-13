@@ -15,6 +15,8 @@ export async function GET() {
     (await AuthSettings.create({
       _id: "current",
       admin: {
+        sessionDuration: 5,
+        enforceSessionDuration: true,
         allowNormalAdminManageAdmins: false,
         providers: { emailPassword: true, magicLink: true },
         maxActiveSessions: 5,
@@ -46,6 +48,14 @@ export async function PUT(request) {
 
   if (body.admin) {
     update.admin = {
+      sessionDuration:
+        typeof body.admin.sessionDuration === "number"
+          ? Math.max(body.admin.sessionDuration, 1)
+          : undefined,
+      enforceSessionDuration:
+        body.admin.enforceSessionDuration !== undefined
+          ? !!body.admin.enforceSessionDuration
+          : undefined,
       allowNormalAdminManageAdmins:
         body.admin.allowNormalAdminManageAdmins !== undefined
           ? !!body.admin.allowNormalAdminManageAdmins

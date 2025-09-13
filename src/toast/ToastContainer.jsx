@@ -14,7 +14,7 @@ const ToastContainer = () => {
 
   const getToastStyles = (type) => {
     const baseStyles =
-      "flex items-center gap-2 px-4 py-3 rounded-sm max-w-md min-w-72 border border-y-2 relative overflow-hidden bg-white";
+      "flex items-center gap-2 px-4 pt-2 pb-3 rounded-sm max-w-md min-w-72 border border-y-2 relative overflow-hidden bg-white";
 
     switch (type) {
       case "success":
@@ -30,7 +30,7 @@ const ToastContainer = () => {
   };
 
   const getIcon = (type) => {
-    const iconClass = "h-5 w-5 flex-shrink-0";
+    const iconClass = "h-5 xl:w-7 w-5 xl:h-7 flex-shrink-0";
 
     switch (type) {
       case "success":

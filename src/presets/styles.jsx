@@ -32,15 +32,36 @@ export const KeyValue = ({ label, value }) => {
   );
 };
 
-export const MiniCard = ({ title, subLine }) => (
-  <div className="w-full flex items-center gap-2">
-    <div className="w-[1px] h-full min-h-10 bg-zinc-400 rounded" />
-    <div className="flex flex-col gap-1">
-      <h2 className="text-sm text-primary">{title}</h2>
-      <p className="text-xs text-zinc-500">{subLine}</p>
+export const MiniCard = ({ title, subLine, size = "sm", style = "light" }) => {
+  const TitleSizes = {
+    xs: "text-xs hover:text-sm transition-all",
+    sm: "text-sm hover:text-base transition-all",
+    md: "text-base hover:text-lg transition-all",
+    lg: "text-lg hover:text-xl transition-all",
+  };
+  const SubLineSizes = {
+    xs: "text-xxs hover:text-xs transition-all",
+    sm: "text-xs hover:text-sm transition-all",
+    md: "text-md hover:text-base transition-all",
+    lg: "text-base hover:text-lg transition-all",
+  };
+
+  return (
+    <div className="w-full flex items-center gap-2" key={title}>
+      <div
+        className={`${
+          style === "light" ? "w-[1px]" : "w-[2px]"
+        } h-full min-h-10 bg-second/80 rounded isolate`}
+      />
+      <div className="flex flex-col gap-1">
+        <h2 className={`${TitleSizes[size]} text-primary font-medium`}>
+          {title}
+        </h2>
+        <p className={`${SubLineSizes[size]} text-zinc-500`}>{subLine}</p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const ToggleLiver = ({ key, checked, onChange }) => (
   <label
@@ -93,5 +114,24 @@ export const Checkbox = ({ selected, onChange }) => (
         />
       </svg>
     )}
+  </div>
+);
+
+export const ViewToggle = ({ viewMode, setViewMode, viewToggleOptions }) => (
+  <div className="flex bg-zinc-100 border border-b-2 border-zinc-300 rounded-sm overflow-hidden py-1 px-1.5 gap-1">
+    {viewToggleOptions.map(({ icon, value }) => (
+      <button
+        key={value}
+        onClick={() => setViewMode(value)}
+        className={`p-1.5 text-sm transition-all rounded-sm ${
+          viewMode === value
+            ? "bg-primary text-white"
+            : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-300"
+        }`}
+        title={value}
+      >
+        {icon}
+      </button>
+    ))}
   </div>
 );
