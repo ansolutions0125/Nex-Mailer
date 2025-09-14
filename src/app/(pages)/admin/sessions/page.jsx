@@ -18,7 +18,7 @@ import {
   FiChevronDown,
   FiChevronRight,
 } from "react-icons/fi";
-import { Checkbox, inputStyles } from "@/presets/styles";
+import { Checkbox, inputStyles, TabToggle } from "@/presets/styles";
 import { Dropdown } from "@/components/Dropdown";
 
 /* ------------------------------ utilities ------------------------------ */
@@ -208,7 +208,7 @@ export default function AdminSessionsPage() {
   const [raw, setRaw] = useState([]); // normalized rows across pages
 
   const [query, setQuery] = useState("");
-  const [statusTab, setStatusTab] = useState("all"); // all|active|revoked|expired
+  const [statusTab, setStatusTab] = useState("active"); // all|active|revoked|expired
   const [groupByHolder, setGroupByHolder] = useState(true);
   const [sortKey, setSortKey] = useState("lastActiveAt"); // lastActiveAt|startedAt|expiresAt|holder
   const [sortDir, setSortDir] = useState("desc"); // asc|desc
@@ -643,7 +643,16 @@ export default function AdminSessionsPage() {
 
         {/* Tabs & secondary controls */}
         <div className="flex flex-wrap items-center gap-2 mt-3">
-          <Tabs value={statusTab} onChange={setStatusTab} />
+          <TabToggle
+            currentTab={statusTab}
+            setCurrentTab={setStatusTab}
+            TabToggleOptions={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "revoked", label: "Revoked" },
+              { value: "expired", label: "Expired" },
+            ]}
+          />
           <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center gap-2">
               <Dropdown

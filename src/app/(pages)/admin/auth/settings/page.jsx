@@ -5,7 +5,7 @@ import SidebarWrapper from "@/components/SidebarWrapper";
 import Header from "@/components/Header";
 import PropTypes from "prop-types";
 import Cookies from "js-cookie";
-import { inputStyles, ToggleLiver } from "@/presets/styles";
+import { inputStyles, labelStyles, ToggleLiver } from "@/presets/styles";
 
 const cardCls = "bg-white p-4";
 
@@ -149,8 +149,8 @@ const AdminAuthSettingsPage = () => {
                   }))
                 }
               />
-              <div>
-                <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">
+              <div className="flex flex-col gap-1">
+                <label className={labelStyles("base")}>
                   Max sessions per admin
                 </label>
                 <input
@@ -181,9 +181,9 @@ const AdminAuthSettingsPage = () => {
                   }))
                 }
               />
-              <div>
-                <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">
-                  Session duration (hours)
+              <div className="flex flex-col gap-1">
+                <label className={labelStyles("base")}>
+                  Session duration (days)
                 </label>
                 <input
                   type="number"

@@ -118,7 +118,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const _id = searchParams.get("_id");
     const slug = searchParams.get("slug");
-    const withStats = searchParams.get("withStats") === "true";
+    const withStats = searchParams.get("withStats") === "true"; 
     const expand = searchParams.get("expand"); // 'plan'
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.max(1, parseInt(searchParams.get("limit") || "20", 10));
@@ -146,13 +146,79 @@ export async function GET(request) {
     }
 
     const [items, totalItems] = await Promise.all([
-      Customer.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Customer.find({})
+        .populate('planId')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
       Customer.countDocuments({}),
     ]);
 
+    // Separate customers into groups based on plan and payment status
+    const nonPlanHolders = [];
+    const activePlanHolders = [];
+    const expiredPlanHolders = [];
+    const trialPlanHolders = [];
+    const pendingPaymentCustomers = [];
+    const suspendedCustomers = [];
+
+    const now = new Date();
+
+    items.forEach(customer => {
+      if (!customer.planId) {
+        nonPlanHolders.push(sanitizeCustomer(customer));
+      } else {
+        // Check plan status
+        const planEndDate = customer.emailLimits?.periodEnd;
+        const isExpired = planEndDate && planEndDate < now;
+        const isTrialPlan = customer.planSnapshot?.name?.toLowerCase().includes('trial');
+        const hasPendingPayment = customer.paymentStatus === 'pending';
+        const isSuspended = customer.status === 'suspended';
+
+        if (isSuspended) {
+          suspendedCustomers.push(sanitizeCustomer(customer));
+        } else if (hasPendingPayment) {
+          pendingPaymentCustomers.push(sanitizeCustomer(customer));
+        } else if (isTrialPlan) {
+          trialPlanHolders.push(sanitizeCustomer(customer));
+        } else if (isExpired) {
+          expiredPlanHolders.push(sanitizeCustomer(customer));
+        } else {
+          activePlanHolders.push(sanitizeCustomer(customer));
+        }
+      }
+    });
+
     return NextResponse.json({
       success: true,
-      data: items.map(sanitizeCustomer),
+      data: {
+        groups: [
+          {
+            label: "Active Plan Customers",
+            customers: activePlanHolders
+          },
+          {
+            label: "Trial Plan Customers",
+            customers: trialPlanHolders
+          },
+          {
+            label: "Expired Plan Customers",
+            customers: expiredPlanHolders
+          },
+          {
+            label: "Pending Payment Customers",
+            customers: pendingPaymentCustomers
+          },
+          {
+            label: "Suspended Customers",
+            customers: suspendedCustomers
+          },
+          {
+            label: "Non-plan Customers",
+            customers: nonPlanHolders
+          }
+        ]
+      },
       pagination: {
         currentPage: page,
         itemsPerPage: limit,

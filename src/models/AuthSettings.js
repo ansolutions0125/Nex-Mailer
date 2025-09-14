@@ -7,8 +7,8 @@ const AuthSettingsSchema = new Schema(
     _id: { type: String, default: "current" },
 
     admin: {
-      sessionDuration: 5,
-      enforceSessionDuration: true,
+      sessionDuration: { type: Number, default: 5, min: 1, max: 100 },
+      enforceSessionDuration: { type: Boolean, default: true },
       allowNormalAdminManageAdmins: { type: Boolean, default: false },
       providers: {
         emailPassword: { type: Boolean, default: true },

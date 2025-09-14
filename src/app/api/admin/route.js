@@ -35,6 +35,8 @@ async function getLiveAuthSettings() {
   return (
     settings || {
       admin: {
+        sessionDuration: 5,
+        enforceSessionDuration: true,
         allowNormalAdminManageAdmins: false,
         providers: {
           emailPassword: true,
@@ -56,6 +58,30 @@ function pick(obj, keys) {
   return out;
 }
 
+function sanitizeAdminDoc(doc) {
+  const src = doc?.toObject ? doc.toObject() : doc;
+  return pick(src, [
+    "_id",
+    "email",
+    "firstName",
+    "lastName",
+    "roleKey",
+    "roleId",
+    "isActive",
+    "createdAt",
+    "updatedAt",
+  ]);
+}
+
+function getClientContext(request) {
+  const userAgent = request.headers.get("user-agent") || "";
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0] ||
+    request.headers.get("x-real-ip") ||
+    "";
+  return { userAgent, ip };
+}
+
 export async function GET(request) {
   try {
     await dbConnect();
@@ -63,12 +89,10 @@ export async function GET(request) {
     // Authenticate and authorize
     const authData = await adminReqWithAuth(request.headers);
 
-    console.log(authData);
-
-    // Check if user can view admins (requires admin.view or admin.manageAdmins permission)
-    if (authData) {
+    // Allow owner OR admin.view OR admin.manageAdmins
+    try {
       requireOwner(authData);
-    } else {
+    } catch {
       try {
         requirePermission(authData, "admin.view");
       } catch {
@@ -78,7 +102,10 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.max(1, parseInt(searchParams.get("limit") || "10", 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(searchParams.get("limit") || "10", 10))
+    );
     const skip = (page - 1) * limit;
 
     const search = (searchParams.get("search") || "").trim().toLowerCase();
@@ -175,7 +202,7 @@ export async function POST(request) {
       });
 
       return NextResponse.json(
-        { success: true, data: owner, message: "Owner created" },
+        { success: true, data: sanitizeAdminDoc(owner), message: "Owner created" },
         { status: 201 }
       );
     }
@@ -244,9 +271,18 @@ export async function POST(request) {
         );
       }
 
+      const normalizedEmail = email.toLowerCase().trim();
+      const emailTaken = await Admin.exists({ email: normalizedEmail });
+      if (emailTaken) {
+        return NextResponse.json(
+          { success: false, message: "Email already in use" },
+          { status: 409 }
+        );
+      }
+
       const hash = await bcrypt.hash(password, 12);
       const doc = await Admin.create({
-        email: email.toLowerCase().trim(),
+        email: normalizedEmail,
         passwordHash: hash,
         sessionType: "password",
         firstName,
@@ -260,7 +296,7 @@ export async function POST(request) {
       });
 
       return NextResponse.json(
-        { success: true, data: doc, message: "Admin created" },
+        { success: true, data: sanitizeAdminDoc(doc), message: "Admin created" },
         { status: 201 }
       );
     }
@@ -268,6 +304,16 @@ export async function POST(request) {
     // 3) Email/password login (session limit enforced)
     if (action === "login") {
       const { email, password } = body || {};
+      const settings = await getLiveAuthSettings();
+
+      // Respect provider toggle
+      if (!settings?.admin?.providers?.emailPassword) {
+        return NextResponse.json(
+          { success: false, message: "Password login is disabled" },
+          { status: 403 }
+        );
+      }
+
       const user = await Admin.findOne({
         email: String(email || "")
           .toLowerCase()
@@ -297,8 +343,6 @@ export async function POST(request) {
           { status: 401 }
         );
       }
-
-      const settings = await getLiveAuthSettings();
 
       // Check session limits
       if (settings?.admin?.enforceSessionLimit) {
@@ -330,11 +374,7 @@ export async function POST(request) {
           );
         }
       }
-      const userAgent = request.headers.get("user-agent") || "";
-      const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0] ||
-        request.headers.get("x-real-ip") ||
-        "";
+      const { userAgent, ip } = getClientContext(request);
 
       // Create session
       const jti = crypto.randomUUID();
@@ -346,19 +386,23 @@ export async function POST(request) {
         ip,
         startedAt: now(),
         lastActiveAt: now(),
-        expiresAt: inDays(settings.admin.sessionDuration || 7),
+        expiresAt: inDays(settings?.admin?.sessionDuration ?? 7),
       });
 
       // Get permissions for JWT
       const permissions = await computeAdminPermissions(user);
 
-      const token = signAdminJWT({
+      const jwtPayload = {
         adminId: user._id,
         email: user.email,
         roleKey: permissions.roleKey,
         jti,
         typ: "admin",
-      });
+      };
+      if (settings?.admin?.enforceSessionDuration) {
+        jwtPayload.exp = Math.floor(session.expiresAt.getTime() / 1000);
+      }
+      const token = signAdminJWT(jwtPayload);
 
       return NextResponse.json({
         success: true,
@@ -423,7 +467,7 @@ export async function POST(request) {
       return NextResponse.json({
         success: true,
         message: "Magic link generated (send via email in production)",
-        data: { token, expiresAt },
+        data: { token, expiresAt }, // NOTE: Do not expose token in production responses
       });
     }
 
@@ -453,7 +497,8 @@ export async function POST(request) {
 
       const expired =
         !user.magicLink.expiresAt || user.magicLink.expiresAt < new Date();
-      if (user.magicLink.token !== token || expired) {
+      const used = !!user.magicLink.usedAt;
+      if (user.magicLink.token !== token || expired || used) {
         return NextResponse.json(
           { success: false, message: "Invalid or expired link" },
           { status: 401 }
@@ -486,30 +531,38 @@ export async function POST(request) {
         }
       }
 
-      // Consume magic link + create session
+      // Consume magic link + create session (single-use)
       user.magicLink.usedAt = now();
+      user.magicLink.token = null; // clear to enforce single-use
       await user.save();
 
       const jti = crypto.randomUUID();
+      const { userAgent, ip } = getClientContext(request);
       const session = await AdminSession.create({
         actorType: "admin",
         adminId: user._id,
         jti,
+        userAgent,
+        ip,
         startedAt: now(),
         lastActiveAt: now(),
-        expiresAt: inDays(7),
+        expiresAt: inDays(settings?.admin?.sessionDuration ?? 7),
       });
 
       // Get permissions
       const permissions = await computeAdminPermissions(user);
 
-      const tokenJwt = signAdminJWT({
+      const jwtPayload = {
         adminId: user._id,
         email: user.email,
         roleKey: permissions.roleKey,
         jti,
         typ: "admin",
-      });
+      };
+      if (settings?.admin?.enforceSessionDuration) {
+        jwtPayload.exp = Math.floor(session.expiresAt.getTime() / 1000);
+      }
+      const tokenJwt = signAdminJWT(jwtPayload);
 
       return NextResponse.json({
         success: true,
@@ -664,6 +717,13 @@ export async function PUT(request) {
         );
       }
 
+      if (role.key === "owner" && authData?.admin?.roleKey !== "owner") {
+        return NextResponse.json(
+          { success: false, message: "Only the owner can assign the owner role" },
+          { status: 403 }
+        );
+      }
+
       const updated = await Admin.findByIdAndUpdate(
         body.adminId,
         {
@@ -757,6 +817,22 @@ export async function PUT(request) {
     if (action === "updatePermissions") {
       const { permissionsExtra = [], permissionsDenied = [] } = body;
 
+      const target = await Admin.findById(body.adminId)
+        .select("roleKey")
+        .lean();
+      if (!target) {
+        return NextResponse.json(
+          { success: false, message: "Admin not found" },
+          { status: 404 }
+        );
+      }
+      if (target.roleKey === "owner" && authData?.admin?.roleKey !== "owner") {
+        return NextResponse.json(
+          { success: false, message: "Cannot modify owner permissions" },
+          { status: 403 }
+        );
+      }
+
       const updated = await Admin.findByIdAndUpdate(
         body.adminId,
         {
@@ -834,6 +910,21 @@ export async function DELETE(request) {
     if (_id === authData.admin._id.toString()) {
       return NextResponse.json(
         { success: false, message: "Cannot delete your own account" },
+        { status: 400 }
+      );
+    }
+
+    // Prevent deleting owner
+    const target = await Admin.findById(_id).select("roleKey").lean();
+    if (!target) {
+      return NextResponse.json(
+        { success: false, message: "Admin not found" },
+        { status: 404 }
+      );
+    }
+    if (target.roleKey === "owner") {
+      return NextResponse.json(
+        { success: false, message: "Cannot delete the owner account" },
         { status: 400 }
       );
     }

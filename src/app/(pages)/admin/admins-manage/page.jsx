@@ -1098,16 +1098,6 @@ export default function AdminsPage() {
   );
 }
 
-/* ------------------------------ components ------------------------------ */
-
-function Kpi({ label, value }) {
-  return (
-    <div className="bg-white border border-zinc-200 rounded-lg p-3">
-      <p className="text-xs uppercase text-zinc-500 font-semibold">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-zinc-900">{value}</p>
-    </div>
-  );
-}
 
 function Skeleton() {
   return (

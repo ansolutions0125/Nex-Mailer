@@ -34,16 +34,14 @@ export const KeyValue = ({ label, value }) => {
 
 export const MiniCard = ({ title, subLine, size = "sm", style = "light" }) => {
   const TitleSizes = {
-    xs: "text-xs hover:text-sm transition-all",
-    sm: "text-sm hover:text-base transition-all",
-    md: "text-base hover:text-lg transition-all",
-    lg: "text-lg hover:text-xl transition-all",
+    xs: "text-xs transition-all",
+    sm: "text-sm transition-all",
+    md: "text-sm md:text-base lg:text-lg transition-all",
   };
   const SubLineSizes = {
-    xs: "text-xxs hover:text-xs transition-all",
-    sm: "text-xs hover:text-sm transition-all",
-    md: "text-md hover:text-base transition-all",
-    lg: "text-base hover:text-lg transition-all",
+    xs: "text-xxs transition-all",
+    sm: "text-xs transition-all",
+    md: "text-xs md:text-sm lg:text-base transition-all",
   };
 
   return (
@@ -131,6 +129,26 @@ export const ViewToggle = ({ viewMode, setViewMode, viewToggleOptions }) => (
         title={value}
       >
         {icon}
+      </button>
+    ))}
+  </div>
+);
+
+
+export const TabToggle = ({ currentTab, setCurrentTab, TabToggleOptions }) => (
+  <div className="flex bg-zinc-100 border border-b-2 border-zinc-300 rounded-sm overflow-hidden py-1 px-1.5 gap-1">
+    {TabToggleOptions.map(({ label, value }) => (
+      <button
+        key={value}
+        onClick={() => setCurrentTab(value)}
+        className={`p-1.5 text-xs transition-all rounded-sm ${
+          currentTab === value
+            ? "bg-primary text-white"
+            : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-300"
+        }`}
+        title={value}
+      >
+        {label}
       </button>
     ))}
   </div>

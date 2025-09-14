@@ -10,7 +10,7 @@ import React, {
 import PropTypes from "prop-types";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { GoGear, GoGitPullRequest } from "react-icons/go";
+import { GoFile, GoGear, GoGitPullRequest } from "react-icons/go";
 import { CgMediaLive } from "react-icons/cg";
 import { FaGears } from "react-icons/fa6";
 
@@ -140,6 +140,7 @@ const createNavigationItems = (customer, admin) => [
     text: "Settings",
     dropdown: [
       { icon: <GoGear />, text: "Admin Auth Settings", href: "/admin/auth/settings" },
+      { icon: <GoFile />, text: "CSV Management", href: "/csv-manager" },
     ],
   },
 ];

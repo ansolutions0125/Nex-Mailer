@@ -40,11 +40,11 @@ export const useToastStore = create((set, get) => ({
   },
 
   // Convenience methods
-  showSuccess: (message, duration = 70000, options = {}) => {
+  showSuccess: (message, duration = 7000, options = {}) => {
     return get().showToast(message, "success", duration, options);
   },
 
-  showError: (message, duration = 70000, options = {}) => {
+  showError: (message, duration = 7000, options = {}) => {
     return get().showToast(message, "error", duration, options);
   },
 
@@ -52,7 +52,7 @@ export const useToastStore = create((set, get) => ({
     return get().showToast(message, "info", duration, options);
   },
 
-  showWarning: (message, duration = 500, options = {}) => {
+  showWarning: (message, duration = 1000, options = {}) => {
     return get().showToast(message, "warning", duration, options);
   },
 }));
