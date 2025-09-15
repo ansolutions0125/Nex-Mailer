@@ -22,78 +22,132 @@ export async function GET() {
         maxActiveSessions: 5,
         enforceSessionLimit: true,
       },
+      customer: {
+        sessionDuration: 5,
+        enforceSessionDuration: true,
+        providers: { emailPassword: true, magicLink: true },
+        maxActiveSessions: 5,
+        enforceSessionLimit: true,
+      },
     }).then((d) => d.toObject()));
   return NextResponse.json({ success: true, data: doc });
 }
 
 export async function PUT(request) {
-  await dbConnect();
-  // Authenticate user
-  const authData = await adminReqWithAuth(request.headers);
+  try {
+    await dbConnect();
+    // Authenticate user
+    const authData = await adminReqWithAuth(request.headers);
 
-  if (authData.admin._id) {
-    if (authData) {
-      requireOwner(authData);
-    } else {
-      try {
-        requirePermission(authData, "roles.manage");
-      } catch {
-        requirePermission(authData, "admin.manageAdmins");
+    if (authData.admin._id) {
+      if (authData) {
+        requireOwner(authData);
+      } else {
+        try {
+          requirePermission(authData, "roles.manage");
+        } catch {
+          requirePermission(authData, "admin.manageAdmins");
+        }
       }
     }
-  }
 
-  const body = await request.json();
-  const update = {};
+    const body = await request.json();
+    const update = {};
 
-  if (body.admin) {
-    update.admin = {
-      sessionDuration:
-        typeof body.admin.sessionDuration === "number"
-          ? Math.max(body.admin.sessionDuration, 1)
-          : undefined,
-      enforceSessionDuration:
-        body.admin.enforceSessionDuration !== undefined
-          ? !!body.admin.enforceSessionDuration
-          : undefined,
-      allowNormalAdminManageAdmins:
-        body.admin.allowNormalAdminManageAdmins !== undefined
-          ? !!body.admin.allowNormalAdminManageAdmins
-          : undefined,
-      providers: {
-        emailPassword:
-          body.admin.providers?.emailPassword !== undefined
-            ? !!body.admin.providers.emailPassword
+    if (body.admin) {
+      update.admin = {
+        sessionDuration:
+          typeof body.admin.sessionDuration === "number"
+            ? Math.min(Math.max(body.admin.sessionDuration, 1), 100)
             : undefined,
-        magicLink:
-          body.admin.providers?.magicLink !== undefined
-            ? !!body.admin.providers.magicLink
+        enforceSessionDuration:
+          body.admin.enforceSessionDuration !== undefined
+            ? !!body.admin.enforceSessionDuration
             : undefined,
-      },
-      maxActiveSessions:
-        typeof body.admin.maxActiveSessions === "number"
-          ? Math.min(Math.max(body.admin.maxActiveSessions, 1), 100)
-          : undefined,
-      enforceSessionLimit:
-        body.admin.enforceSessionLimit !== undefined
-          ? !!body.admin.enforceSessionLimit
-          : undefined,
-    };
-    // remove undefined keys
-    Object.keys(update.admin.providers).forEach(
-      (k) =>
-        update.admin.providers[k] === undefined &&
-        delete update.admin.providers[k]
-    );
-    Object.keys(update.admin).forEach(
-      (k) => update.admin[k] === undefined && delete update.admin[k]
+        allowNormalAdminManageAdmins:
+          body.admin.allowNormalAdminManageAdmins !== undefined
+            ? !!body.admin.allowNormalAdminManageAdmins
+            : undefined,
+        providers: {
+          emailPassword:
+            body.admin.providers?.emailPassword !== undefined
+              ? !!body.admin.providers.emailPassword
+              : undefined,
+          magicLink:
+            body.admin.providers?.magicLink !== undefined
+              ? !!body.admin.providers.magicLink
+              : undefined,
+        },
+        maxActiveSessions:
+          typeof body.admin.maxActiveSessions === "number"
+            ? Math.min(Math.max(body.admin.maxActiveSessions, 1), 100)
+            : undefined,
+        enforceSessionLimit:
+          body.admin.enforceSessionLimit !== undefined
+            ? !!body.admin.enforceSessionLimit
+            : undefined,
+      };
+      // remove undefined keys
+      Object.keys(update.admin.providers).forEach(
+        (k) =>
+          update.admin.providers[k] === undefined &&
+          delete update.admin.providers[k]
+      );
+      Object.keys(update.admin).forEach(
+        (k) => update.admin[k] === undefined && delete update.admin[k]
+      );
+    }
+
+    if (body.customer) {
+      update.customer = {
+        sessionDuration:
+          typeof body.customer.sessionDuration === "number"
+            ? Math.min(Math.max(body.customer.sessionDuration, 1), 100)
+            : undefined,
+        enforceSessionDuration:
+          body.customer.enforceSessionDuration !== undefined
+            ? !!body.customer.enforceSessionDuration
+            : undefined,
+        providers: {
+          emailPassword:
+            body.customer.providers?.emailPassword !== undefined
+              ? !!body.customer.providers.emailPassword
+              : undefined,
+          magicLink:
+            body.customer.providers?.magicLink !== undefined
+              ? !!body.customer.providers.magicLink
+              : undefined,
+        },
+        maxActiveSessions:
+          typeof body.customer.maxActiveSessions === "number"
+            ? Math.min(Math.max(body.customer.maxActiveSessions, 1), 100)
+            : undefined,
+        enforceSessionLimit:
+          body.customer.enforceSessionLimit !== undefined
+            ? !!body.customer.enforceSessionLimit
+            : undefined,
+      };
+      // remove undefined keys
+      Object.keys(update.customer.providers).forEach(
+        (k) =>
+          update.customer.providers[k] === undefined &&
+          delete update.customer.providers[k]
+      );
+      Object.keys(update.customer).forEach(
+        (k) => update.customer[k] === undefined && delete update.customer[k]
+      );
+    }
+
+    const doc = await AuthSettings.findByIdAndUpdate(
+      "current",
+      { $set: update },
+      { new: true, upsert: true }
+    ).lean();
+    return NextResponse.json({ success: true, data: doc });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
     );
   }
-
-  const doc = await AuthSettings.findByIdAndUpdate(
-    "current",
-    { $set: update },
-    { new: true, upsert: true }
-  ).lean();
-  return NextResponse.json({ success: true, data: doc });
 }

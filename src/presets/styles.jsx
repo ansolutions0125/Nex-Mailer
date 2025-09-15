@@ -32,6 +32,73 @@ export const KeyValue = ({ label, value }) => {
   );
 };
 
+export const getUrlParams = () => {
+  if (typeof window === "undefined") return {};
+  const params = new URLSearchParams(window.location.search);
+  return Object.fromEntries(params.entries());
+};
+
+export const LoadingSpinner = ({ type = "compo" }) => (
+  <div
+    className={`${
+      type === "page" ? "h-screen goodboy" : "h-64"
+    } center-flex flex-col gap-2`}
+  >
+    <h1
+      className={` ${
+        type === "page" ? "text-xl lg:text-3xl" : "text-sm xl:text-base"
+      } font-medium text-zinc-600 animate-pulse`}
+    >
+      Processing!
+    </h1>
+    <div
+      className={`${
+        type === "page" && "mb-80 md:mb-32"
+      } flex justify-center items-center relative`}
+    >
+      <div
+        className={`${
+          type === "page"
+            ? "h-20 w-20 lg:w-24 lg:h-24"
+            : "h-10 w-10 lg:w-12 lg:h-12"
+        } border-2 border-zinc-300 border-t-zinc-700 animate-spin rounded-full`}
+      />
+      <div
+        className={`${
+          type === "page"
+            ? "h-16 w-16 lg:w-20 lg:h-20"
+            : "h-8 w-8 lg:w-10 lg:h-10"
+        } absolute border-2 border-zinc-300 border-t-zinc-700 animate-spin rounded-full`}
+      />
+      <div
+        className={`${
+          type === "page" ? "h-12 w-12" : "h-6 w-6"
+        } absolute bg-second animate-pulse rounded-full`}
+      />
+    </div>
+
+    <h1
+      className={`${
+        type === "page" ? "hidden" : "text-sm xl:text-base"
+      } font-medium text-zinc-600 animate-pulse`}
+    >
+      Processing!
+    </h1>
+
+    {type === "page" && (
+      <div className="mt-8 text-center flex flex-col items-center">
+        <p className="text-zinc-600 mb-2">If the page is taking too long to load</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="btn btn-sm btn-primary-two"
+        >
+          Reload Page
+        </button>
+      </div>
+    )}
+  </div>
+);
+
 export const MiniCard = ({ title, subLine, size = "sm", style = "light" }) => {
   const TitleSizes = {
     xs: "text-xs transition-all",
@@ -134,22 +201,37 @@ export const ViewToggle = ({ viewMode, setViewMode, viewToggleOptions }) => (
   </div>
 );
 
+export const TabToggle = ({
+  label,
+  currentTab,
+  setCurrentTab,
+  TabToggleOptions,
+  size = "sm",
+}) => {
+  const sizes = {
+    sm: "text-xs p-1.5",
+    md: "text-xs md:text-sm py-1 px-2 md:py-1.5 md:px-3",
+  };
 
-export const TabToggle = ({ currentTab, setCurrentTab, TabToggleOptions }) => (
-  <div className="flex bg-zinc-100 border border-b-2 border-zinc-300 rounded-sm overflow-hidden py-1 px-1.5 gap-1">
-    {TabToggleOptions.map(({ label, value }) => (
-      <button
-        key={value}
-        onClick={() => setCurrentTab(value)}
-        className={`p-1.5 text-xs transition-all rounded-sm ${
-          currentTab === value
-            ? "bg-primary text-white"
-            : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-300"
-        }`}
-        title={value}
-      >
-        {label}
-      </button>
-    ))}
-  </div>
-);
+  return (
+    <div className="space-y-1">
+      {label && <div className={labelStyles("base")}>{label}</div>}
+      <div className="flex bg-zinc-100 border border-b-2 border-zinc-300 rounded-sm overflow-hidden py-1 px-1.5 gap-1">
+        {TabToggleOptions.map(({ label, value }) => (
+          <button
+            key={value}
+            onClick={() => setCurrentTab(value)}
+            className={`${sizes[size]} transition-all rounded-sm ${
+              currentTab === value
+                ? "bg-primary text-white"
+                : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-300"
+            }`}
+            title={value}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};

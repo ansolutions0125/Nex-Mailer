@@ -13,39 +13,49 @@ export async function adminReqWithAuth(headers) {
 
   const token = headers.get("mailer-auth-token");
   if (!token) {
-    const error = new Error("No auth token provided");
-    error.statusCode = 401;
-    throw error;
+    throw {
+      statusCode: 401,
+      message: "No auth token provided"
+    };
   }
 
+  // When verifyJWT() throws an error:
+  // 1. The error is caught in the catch block
+  // 2. A new Error is created with message "Invalid or expired token" 
+  // 3. statusCode 401 is set on the error
+  // 4. The error is thrown, stopping execution
   let decoded;
   try {
     decoded = verifyJWT(token);
   } catch (err) {
-    const error = new Error("Invalid or expired token");
-    error.statusCode = 401;
-    throw error;
+    throw {
+      statusCode: 401,
+      message: "Invalid or expired token"
+    };
   }
 
   // Validate JWT structure
   if (!decoded.adminId || !decoded.jti || decoded.typ !== "admin") {
-    const error = new Error("Invalid token structure");
-    error.statusCode = 401;
-    throw error;
+    throw {
+      statusCode: 401,
+      message: "Invalid token structure"
+    };
   }
 
   // Find admin
   const admin = await Admin.findById(decoded.adminId).lean();
   if (!admin) {
-    const error = new Error("Admin not found");
-    error.statusCode = 401;
-    throw error;
+    throw {
+      statusCode: 401,
+      message: "Admin not found"
+    };
   }
 
   if (!admin.isActive) {
-    const error = new Error("Admin account is deactivated");
-    error.statusCode = 403;
-    throw error;
+    throw {
+      statusCode: 403,
+      message: "Admin account is deactivated"
+    };
   }
 
   // Validate session
@@ -59,9 +69,10 @@ export async function adminReqWithAuth(headers) {
   });
 
   if (!activeSession) {
-    const error = new Error("No active session found");
-    error.statusCode = 401;
-    throw error;
+    throw {
+      statusCode: 401,
+      message: "No active session found"
+    };
   }
 
   // Update last active

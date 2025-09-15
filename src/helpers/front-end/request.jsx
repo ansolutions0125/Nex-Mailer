@@ -68,7 +68,7 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
 
   const headers = {
     "Content-Type": "application/json",
-    "mailer-auth-token": admin && token ? token : "token not provided",
+    ...(admin && token && { "mailer-auth-token": token })
   };
 
   const controller = abortOnTimeoutMs ? new AbortController() : null;

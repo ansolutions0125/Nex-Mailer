@@ -17,6 +17,17 @@ const AuthSettingsSchema = new Schema(
       maxActiveSessions: { type: Number, default: 5, min: 1, max: 100 },
       enforceSessionLimit: { type: Boolean, default: true },
     },
+
+    customer: {
+      sessionDuration: { type: Number, default: 5, min: 1, max: 100 },
+      enforceSessionDuration: { type: Boolean, default: true },
+      providers: {
+        emailPassword: { type: Boolean, default: true },
+        magicLink: { type: Boolean, default: true },
+      },
+      maxActiveSessions: { type: Number, default: 5, min: 1, max: 100 },
+      enforceSessionLimit: { type: Boolean, default: true },
+    },
   },
   { timestamps: true, _id: false }
 );

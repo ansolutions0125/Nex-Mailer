@@ -9,6 +9,7 @@ import {
   requirePermission,
 } from "@/lib/withAuthFunctions";
 import Customer from "@/models/Customer";
+const bcrypt = require("bcryptjs");
 
 const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
 const oid = (v) => new mongoose.Types.ObjectId(v);
@@ -197,76 +198,82 @@ export async function GET(request) {
 
 export async function DELETE(request) {
   try {
-    // Authenticate user
-    const authData = await anyReqWithAuth(request.headers);
-    if (!authData?.customer?._id && !authData?.admin?._id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     await dbConnect();
-    const body = await request.json();
 
-    const { sessionIds = [], customerId } = body || {};
-    if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
-      return NextResponse.json(
-        { success: false, message: "sessionIds[] required" },
-        { status: 400 }
+    const url = new URL(request.url);
+    const { searchParams } = url;
+
+    // Parse body ONCE and reuse
+    const body = await request.json().catch(() => ({}));
+
+    // Accept action from body (preferred) or query string (fallback)
+    const action = body.action || searchParams.get("action");
+
+    // --- Customer session limit path (re-auth) - similar to admin ---
+    if (action === "customer-sessions-limit-reached") {
+      // Accept creds from body (preferred) or query string
+      const customerEmail = body.email;
+      const password = body.password;
+
+      if (!customerEmail || !password) {
+        return NextResponse.json(
+          { success: false, message: "Email and password required" },
+          { status: 400 }
+        );
+      }
+
+      // Load customer with password for verification
+      const customer = await Customer.findOne({ email: customerEmail }).select(
+        "email passwordHash firstName lastName"
       );
-    }
 
-    const ids = sessionIds.filter((id) => isValidId(id)).map((id) => oid(id));
+      if (!customer) {
+        return NextResponse.json(
+          { success: false, message: "Customer not found" },
+          { status: 404 }
+        );
+      }
 
-    if (ids.length === 0) {
-      return NextResponse.json(
-        { success: false, message: "No valid session ids supplied" },
-        { status: 400 }
+      const passwordMatch = await bcrypt.compare(
+        String(password),
+        String(customer.passwordHash)
       );
-    }
+      if (!passwordMatch) {
+        return NextResponse.json(
+          { success: false, message: "Invalid credentials" },
+          { status: 401 }
+        );
+      }
 
-    // Check if admin or customer
-    const userId = String(authData.admin?._id || authData.customer._id);
-    const isAdmin = !!authData.admin;
+      const { sessionIds = [] } = body;
+      if (!Array.isArray(sessionIds) || !sessionIds.length) {
+        return NextResponse.json(
+          { success: false, message: "No valid sessionIds provided" },
+          { status: 400 }
+        );
+      }
 
-    // ANDed filter: target the given ids, customer actor, (optionally) specific customer,
-    // and only sessions that are still active/not already ended.
-    const AND = [
-      { _id: { $in: ids } },
-      { actorType: "customer" },
-      {
+      const ids = sessionIds.filter((id) => isValidId(id)).map((id) => oid(id));
+      if (!ids.length) {
+        return NextResponse.json(
+          { success: false, message: "No valid sessionIds provided" },
+          { status: 400 }
+        );
+      }
+
+      const filter = {
+        actorType: "customer",
+        $or: [{ actorId: customer._id }, { customerId: customer._id }],
+        _id: { $in: ids },
         $or: [
-          // A) native customer schema still-active definition
+          // A) native customer schema still-active
           { revokedAt: null, endDate: { $gt: now() } },
-          // B) admin-style still-active definition
+          // B) admin-style still-active
           { endedAt: null, revoked: { $ne: true } },
         ],
-      },
-    ];
+      };
 
-    if (!isAdmin) {
-      // Customer can only delete their own sessions
-      AND.push({ actorId: oid(userId) });
-    } else {
-      // Admin can delete specific customer's sessions if customerId provided
-      if (customerId && isValidId(customerId)) {
-        AND.push({
-          $or: [{ actorId: oid(customerId) }, { customerId: oid(customerId) }],
-        });
-      }
-
-      // Verify admin permissions
-      try {
-        requireOwner(authData);
-      } catch {
-        requirePermission(authData, "admin.manageSessions");
-      }
-    }
-
-    const res = await CustomerSession.updateMany(
-      { $and: AND },
-      {
+      const res = await CustomerSession.updateMany(filter, {
         $set: {
           // A) native customer schema close-out
           isActive: false,
@@ -276,18 +283,287 @@ export async function DELETE(request) {
           revoked: true,
           endedAt: now(),
         },
-      }
-    );
+      });
 
-    return NextResponse.json({
-      success: true,
-      message: "Sessions terminated",
-      data: { modified: res.modifiedCount },
-    });
+      return NextResponse.json({
+        success: true,
+        message: "Sessions terminated",
+        data: { modified: res.modifiedCount },
+      });
+    }
+
+    // --- Normal authenticated delete path (enhanced logic from admin) ---
+    const authData = await anyReqWithAuth(request.headers);
+    if (!authData?.customer?._id && !authData?.admin?._id) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const userId = String(authData.admin?._id || authData.customer._id);
+    const isAdmin = !!authData.admin;
+    const currentJti =
+      authData?.session?.jti ||
+      authData?.jti ||
+      request.headers.get("x-session-jti") ||
+      null;
+
+    const {
+      sessionIds = [],
+      customerId,
+      revokeAllOthers = false,
+      status,
+      olderThan,
+    } = body || {};
+
+    let targetCustomerId;
+    
+    if (!isAdmin) {
+      // Customer can only manage their own sessions
+      targetCustomerId = userId;
+    } else {
+      // Admin permissions check
+      try {
+        requireOwner(authData);
+      } catch {
+        requirePermission(authData, "admin.manageSessions");
+      }
+      
+      // Admin can target specific customer or default to all
+      targetCustomerId = customerId && isValidId(customerId) ? customerId : null;
+    }
+
+    const baseFilter = {
+      actorType: "customer",
+      $or: [
+        // A) native customer schema still-active
+        { revokedAt: null },
+        // B) admin-style still-active
+        { endedAt: null },
+      ],
+    };
+
+    // Add customer targeting for non-admin users or when admin specifies customerId
+    if (targetCustomerId) {
+      baseFilter.$or = [
+        { 
+          actorId: oid(targetCustomerId),
+          $or: [
+            { revokedAt: null },
+            { endedAt: null },
+          ]
+        },
+        { 
+          customerId: oid(targetCustomerId),
+          $or: [
+            { revokedAt: null },
+            { endedAt: null },
+          ]
+        },
+      ];
+    }
+
+    // Handle revokeAllOthers (terminate all other sessions except current)
+    if (revokeAllOthers) {
+      const filter = { 
+        ...baseFilter,
+        $and: [
+          {
+            $or: [
+              // A) native customer schema active
+              { isActive: { $ne: false }, revokedAt: null },
+              // B) admin-style active
+              { revoked: { $ne: true }, endedAt: null },
+            ],
+          },
+        ],
+      };
+      
+      if (currentJti) {
+        filter.$and.push({ 
+          $or: [
+            { jti: { $ne: currentJti } },
+            { tokenId: { $ne: currentJti } },
+          ]
+        });
+      }
+
+      const res = await CustomerSession.updateMany(filter, {
+        $set: {
+          // A) native customer schema close-out
+          isActive: false,
+          revokedAt: now(),
+          endDate: now(),
+          // B) admin-style close-out
+          revoked: true,
+          endedAt: now(),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Other sessions terminated",
+        data: { modified: res.modifiedCount },
+      });
+    }
+
+    // Handle specific session IDs
+    if (Array.isArray(sessionIds) && sessionIds.length > 0) {
+      const ids = sessionIds.filter((id) => isValidId(id)).map((id) => oid(id));
+      if (!ids.length) {
+        return NextResponse.json(
+          { success: false, message: "No valid sessionIds" },
+          { status: 400 }
+        );
+      }
+
+      const filter = { 
+        ...baseFilter, 
+        _id: { $in: ids },
+        $or: [
+          // A) native customer schema still-active
+          { revokedAt: null, endDate: { $gt: now() } },
+          // B) admin-style still-active
+          { endedAt: null, revoked: { $ne: true } },
+        ],
+      };
+
+      if (currentJti) {
+        filter.$and = filter.$and || [];
+        filter.$and.push({
+          $or: [
+            { jti: { $ne: currentJti } },
+            { tokenId: { $ne: currentJti } },
+          ]
+        });
+      }
+
+      const res = await CustomerSession.updateMany(filter, {
+        $set: {
+          // A) native customer schema close-out
+          isActive: false,
+          revokedAt: now(),
+          endDate: now(),
+          // B) admin-style close-out
+          revoked: true,
+          endedAt: now(),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Sessions terminated",
+        data: { modified: res.modifiedCount },
+      });
+    }
+
+    // Handle status-based or time-based criteria
+    if (status || olderThan) {
+      const t = now();
+      const filter = { ...baseFilter };
+      
+      if (status === "active") {
+        filter.$and = [
+          {
+            $or: [
+              // A) native customer schema active
+              { isActive: { $ne: false }, revokedAt: null, endDate: { $gt: t } },
+              // B) admin-style active
+              { revoked: { $ne: true }, endedAt: null, expiresAt: { $gt: t } },
+            ],
+          },
+        ];
+      } else if (status === "revoked") {
+        filter.$and = [
+          {
+            $or: [
+              // A) native customer schema revoked
+              { revokedAt: { $ne: null } },
+              // B) admin-style revoked
+              { revoked: true },
+            ],
+          },
+        ];
+      } else if (status === "expired") {
+        filter.$and = [
+          {
+            $or: [
+              // A) native customer schema expired
+              { endDate: { $lte: t }, revokedAt: null },
+              // B) admin-style expired
+              { expiresAt: { $lte: t }, endedAt: null, revoked: { $ne: true } },
+            ],
+          },
+        ];
+      } else {
+        // Default to non-revoked sessions
+        filter.$and = [
+          {
+            $or: [
+              // A) native customer schema not revoked
+              { revokedAt: null },
+              // B) admin-style not revoked
+              { revoked: { $ne: true } },
+            ],
+          },
+        ];
+      }
+
+      if (olderThan) {
+        const ts = new Date(olderThan);
+        if (!Number.isNaN(ts.getTime())) {
+          filter.$and = filter.$and || [];
+          filter.$and.push({
+            $or: [
+              { startDate: { $lt: ts } },
+              { startedAt: { $lt: ts } },
+            ],
+          });
+        }
+      }
+
+      if (currentJti) {
+        filter.$and = filter.$and || [];
+        filter.$and.push({
+          $or: [
+            { jti: { $ne: currentJti } },
+            { tokenId: { $ne: currentJti } },
+          ]
+        });
+      }
+
+      const res = await CustomerSession.updateMany(filter, {
+        $set: {
+          // A) native customer schema close-out
+          isActive: false,
+          revokedAt: now(),
+          endDate: now(),
+          // B) admin-style close-out
+          revoked: true,
+          endedAt: now(),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Sessions terminated by criteria",
+        data: { modified: res.modifiedCount },
+      });
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          "Provide sessionIds[], revokeAllOthers, or { status / olderThan } criteria",
+      },
+      { status: 400 }
+    );
   } catch (e) {
     console.error("DELETE /api/customers/sessions error:", e);
     return NextResponse.json(
-      { success: false, message: "Failed to terminate sessions" },
+      { success: false, message: e.message },
       { status: 500 }
     );
   }

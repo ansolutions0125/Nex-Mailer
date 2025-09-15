@@ -94,10 +94,7 @@ const statusChip = (status) => {
   );
 };
 
-const truncate = (str = "", n = 8) =>
-  str.length > n ? `${str.slice(0, n)}…${str.slice(-4)}` : str;
-
-/* Infer query type for “Live API” context + param decision */
+ 
 const inferQueryType = (q) => {
   const s = (q || "").trim();
   if (!s) return "empty";
@@ -115,12 +112,6 @@ const inferQueryType = (q) => {
   return "text";
 };
 
-/* Normalize server response:
-   Accepts:
-   A) { data: [ { sessionHolder, sessions: [ ... ] }, ... ], pagination }
-   B) { data: [ ...sessions ] } legacy
-   Keep raw for details modal
-*/
 const normalize = (json) => {
   const groups = Array.isArray(json?.data) ? json.data : [];
   const out = [];
@@ -826,31 +817,6 @@ function Kpi({ label, value }) {
   );
 }
 
-function Tabs({ value, onChange }) {
-  const items = [
-    { key: "all", label: "All" },
-    { key: "active", label: "Active" },
-    { key: "revoked", label: "Revoked" },
-    { key: "expired", label: "Expired" },
-  ];
-  return (
-    <div className="inline-flex rounded border border-zinc-300 overflow-hidden">
-      {items.map((it) => (
-        <button
-          key={it.key}
-          onClick={() => onChange(it.key)}
-          className={`text-sm px-3 py-1.5 transition-all ${
-            value === it.key
-              ? "bg-primary text-white"
-              : "bg-white text-zinc-800 hover:bg-zinc-100"
-          }`}
-        >
-          {it.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Skeleton() {
   return (

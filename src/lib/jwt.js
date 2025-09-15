@@ -13,17 +13,23 @@ export function getJWTSecret() {
 }
 
 export function signJWT(payload, opts = {}) {
-  const { expiresIn = "7d", algorithm = "HS256" } = opts;
-  
+  const { algorithm = "HS256" } = opts;
+  if (!payload.expiresIn) {
+    throw new Error("expiresIn must be provided in payload");
+  }
+
   // Ensure we have a jti (JWT ID) for session tracking
   if (!payload.jti) {
     payload.jti = crypto.randomUUID();
   }
-  
+
   // Add issued at time
   payload.iat = Math.floor(Date.now() / 1000);
-  
-  return jwt.sign(payload, getJWTSecret(), { expiresIn, algorithm });
+
+  return jwt.sign(payload, getJWTSecret(), {
+    expiresIn: payload.expiresIn,
+    algorithm,
+  });
 }
 
 export function verifyJWT(token) {
@@ -34,14 +40,14 @@ export function verifyJWT(token) {
     });
   } catch (error) {
     // Re-throw with more specific error messages
-    if (error.name === 'TokenExpiredError') {
-      const err = new Error('Token has expired');
-      err.name = 'TokenExpiredError';
+    if (error.name === "TokenExpiredError") {
+      const err = new Error("Token has expired");
+      err.name = "TokenExpiredError";
       throw err;
     }
-    if (error.name === 'JsonWebTokenError') {
-      const err = new Error('Invalid token');
-      err.name = 'JsonWebTokenError';
+    if (error.name === "JsonWebTokenError") {
+      const err = new Error("Invalid token");
+      err.name = "JsonWebTokenError";
       throw err;
     }
     throw error;
@@ -67,45 +73,48 @@ export function signAdminJWT(payload, opts = {}) {
     roleKey: payload.roleKey,
     typ: "admin",
     jti: payload.jti || crypto.randomUUID(),
-    ...payload // allow override of above fields if needed
+    ...payload, // allow override of above fields if needed
   };
-  
+
   return signJWT(adminPayload, opts);
 }
 
-export function signCustomerJWT(customer, session, opts = {}) {
-  const payload = {
-    sub: customer?._id?.toString(),
+export function signCustomerJWT(payload, opts = {}) {
+  const customerPayload = {
+    customerId: payload.customerId,
+    email: payload.email,
+    roleKey: payload.roleKey,
     typ: "customer",
-    email: customer?.email,
-    sid: session?._id?.toString(),
-    jti: session?.tokenId || crypto.randomUUID(), // use session's tokenId if available
+    jti: payload.jti || crypto.randomUUID(),
+    ...payload, // allow override of above fields if needed
   };
-  return signJWT(payload, opts);
+  return signJWT(customerPayload, opts);
 }
 
 /**
  * Generate a secure random token for magic links, etc.
  */
 export function generateSecureToken(bytes = 32) {
-  return crypto.randomBytes(bytes).toString('base64url');
+  return crypto.randomBytes(bytes).toString("base64url");
 }
 
 /**
  * Validate JWT payload structure for admin tokens
  */
 export function validateAdminTokenPayload(payload) {
-  const required = ['adminId', 'typ', 'jti'];
-  const missing = required.filter(field => !payload[field]);
-  
+  const required = ["adminId", "typ", "jti"];
+  const missing = required.filter((field) => !payload[field]);
+
   if (missing.length > 0) {
-    throw new Error(`Invalid admin token: missing fields ${missing.join(', ')}`);
+    throw new Error(
+      `Invalid admin token: missing fields ${missing.join(", ")}`
+    );
   }
-  
-  if (payload.typ !== 'admin') {
-    throw new Error('Invalid admin token: incorrect type');
+
+  if (payload.typ !== "admin") {
+    throw new Error("Invalid admin token: incorrect type");
   }
-  
+
   return true;
 }
 
@@ -113,16 +122,18 @@ export function validateAdminTokenPayload(payload) {
  * Validate JWT payload structure for customer tokens
  */
 export function validateCustomerTokenPayload(payload) {
-  const required = ['sub', 'typ'];
-  const missing = required.filter(field => !payload[field]);
-  
+  const required = ["sub", "typ"];
+  const missing = required.filter((field) => !payload[field]);
+
   if (missing.length > 0) {
-    throw new Error(`Invalid customer token: missing fields ${missing.join(', ')}`);
+    throw new Error(
+      `Invalid customer token: missing fields ${missing.join(", ")}`
+    );
   }
-  
-  if (payload.typ !== 'customer') {
-    throw new Error('Invalid customer token: incorrect type');
+
+  if (payload.typ !== "customer") {
+    throw new Error("Invalid customer token: incorrect type");
   }
-  
+
   return true;
 }

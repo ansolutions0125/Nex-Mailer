@@ -202,7 +202,11 @@ export async function POST(request) {
       });
 
       return NextResponse.json(
-        { success: true, data: sanitizeAdminDoc(owner), message: "Owner created" },
+        {
+          success: true,
+          data: sanitizeAdminDoc(owner),
+          message: "Owner created",
+        },
         { status: 201 }
       );
     }
@@ -296,7 +300,11 @@ export async function POST(request) {
       });
 
       return NextResponse.json(
-        { success: true, data: sanitizeAdminDoc(doc), message: "Admin created" },
+        {
+          success: true,
+          data: sanitizeAdminDoc(doc),
+          message: "Admin created",
+        },
         { status: 201 }
       );
     }
@@ -396,14 +404,13 @@ export async function POST(request) {
         adminId: user._id,
         email: user.email,
         roleKey: permissions.roleKey,
-        jti,
         typ: "admin",
+        jti,
       };
       if (settings?.admin?.enforceSessionDuration) {
-        jwtPayload.exp = Math.floor(session.expiresAt.getTime() / 1000);
+        jwtPayload.expiresIn = Math.floor(session.expiresAt.getTime() / 1000);
       }
       const token = signAdminJWT(jwtPayload);
-
       return NextResponse.json({
         success: true,
         message: "Logged in",
@@ -719,7 +726,10 @@ export async function PUT(request) {
 
       if (role.key === "owner" && authData?.admin?.roleKey !== "owner") {
         return NextResponse.json(
-          { success: false, message: "Only the owner can assign the owner role" },
+          {
+            success: false,
+            message: "Only the owner can assign the owner role",
+          },
           { status: 403 }
         );
       }

@@ -46,6 +46,7 @@ import {
 
 import useCustomerStore from "@/store/useCustomerStore";
 import useAdminStore from "@/store/useAdminStore";
+import { FolderKanban } from "lucide-react";
 
 // Constants
 const LAYOUT_CONSTANTS = {
@@ -56,99 +57,173 @@ const LAYOUT_CONSTANTS = {
   FLYOUT_CLOSE_DELAY: 85,
 };
 
+// CENTRALIZED BUTTON STYLES - ONE PLACE TO RULE THEM ALL
+const BUTTON_STYLES = {
+  // Base styles
+  base: "bg-white/0 text-white/80",
+  hover: "hover:bg-white/10 hover:text-white",
+  active: "bg-white/10 text-white border border-white/10",
+  // Icon styles
+  iconBase: "bg-white/5 text-white/80",
+  iconHover: "bg-white text-[#0e1635]",
+  iconActive: "bg-white text-[#0e1635]",
+  // Chevron styles
+  chevronBase: "text-white/50",
+  chevronHover: "text-white/70",
+};
+
 const ICON_SIZES = {
   sm: { container: "w-7 h-7", icon: "w-3.5 h-3.5" },
   md: { container: "w-8 h-8", icon: "w-4 h-4" },
   lg: { container: "w-9 h-9", icon: "w-4 h-4" },
 };
 
-// Theme configuration
-const THEME_COLORS = {
-  dark: {
-    idleText: "text-white/80",
-    idleBg: "bg-white/0",
-    hoverText: "text-white",
-    hoverBg: "bg-white/10",
-    activeBg: "bg-white/10",
-    activeText: "text-white",
-    chevron: "text-white/50",
-    chevronHover: "text-white/70",
-    border: "border-white/10",
-  },
-  light: {
-    idleText: "text-zinc-600",
-    idleBg: "bg-transparent",
-    hoverText: "text-zinc-800",
-    hoverBg: "bg-zinc-100",
-    activeBg: "bg-zinc-100",
-    activeText: "text-zinc-900",
-    chevron: "text-zinc-400",
-    chevronHover: "text-zinc-500",
-    border: "border-zinc-200",
-  },
-};
-
 // Navigation data factory
-const createNavigationItems = (customer, admin) => [
-  {
-    icon: <LayoutDashboard />,
-    text: "Dashboard",
-    href: customer?._id ? "/dashboard" : admin?._id ? "/admin/dashboard" : "/",
-  },
-  { icon: <Globe />, text: "Websites", href: "/websites" },
-  {
-    icon: <LuLink />,
-    text: "Automations",
-    href: "/automations",
-    dropdown: [
-      { icon: <Workflow />, text: "All Automations", href: "/automations" },
-      { icon: <LuList />, text: "Lists", href: "/automations/lists" },
-      { icon: <LuUser />, text: "Contacts", href: "/contacts" },
-      { icon: <FileText />, text: "Email Templates", href: "/templates" },
-    ],
-  },
-  { icon: <Logs />, text: "Logs", href: "/logs" },
-  {
-    icon: <Network />,
-    text: "Infrastructure",
-    dropdown: [
-      { icon: <Server />, text: "Sending Servers", href: "/servers" },
-      { icon: <DoorOpen />, text: "Gateways", href: "/gateways" },
-    ],
-  },
-  {
-    icon: <LuUsers />,
-    text: "Customers",
-    dropdown: [
-      { icon: <LuUsers />, text: "Customers", href: "/customers" },
-      { icon: <CgMediaLive />, text: "Customer Sessions", href: "/account/sessions" },
-    ],
-  },
-  { icon: <LuPackage />, text: "Plans", href: "/plans" },
-  {
-    icon: <ShieldUser />,
-    text: "Admin Management",
-    dropdown: [
-      { icon: <UserStar />, text: "Admins Management", href: "/admin/admins-manage" },
-      { icon: <CgMediaLive />, text: "Admin Sessions", href: "/admin/sessions" },
-      { icon: <FolderPen />, text: "Roles", href: "/admin/roles" },
-      { icon: <GoGitPullRequest />, text: "Permissions", href: "/admin/permissions" },
-    ],
-  },
-  {
-    icon: <FaGears />,
-    text: "Settings",
-    dropdown: [
-      { icon: <GoGear />, text: "Admin Auth Settings", href: "/admin/auth/settings" },
-      { icon: <GoFile />, text: "CSV Management", href: "/csv-manager" },
-    ],
-  },
-];
+const createNavigationItems = (customer, admin) => {
+  // Base items visible to both customers and admins
+  const baseItems = [
+    {
+      icon: <LayoutDashboard />,
+      text: "Dashboard",
+      href: customer?._id
+        ? "/dashboard"
+        : admin?._id
+        ? "/admin/dashboard"
+        : "/",
+      order: 1,
+    },
+  ];
+
+  // Items only visible to customers
+  const customerItems = [
+    { icon: <Workflow />, text: "Automations", href: "/automations", order: 2 },
+    {
+      icon: <LuList />,
+      text: "Lists",
+      dropdown: [
+        {
+          icon: <FolderKanban />,
+          text: "Overview",
+          href: "/overview",
+          order: 1,
+        },
+        { icon: <LuList />, text: "All Lists", href: "/my/lists", order: 2 },
+        { icon: <LuUser />, text: "Contacts", href: "/contacts", order: 3 },
+      ],
+      order: 3,
+    },
+    {
+      icon: <FileText />,
+      text: "Email Templates",
+      href: "/my/templates",
+      order: 4,
+    },
+    { icon: <Logs />, text: "Logs", href: "/logs", order: 5 },
+    {
+      icon: <Logs />,
+      text: "API Intregration",
+      href: "/api-intregration",
+      order: 6,
+    },
+  ];
+
+  // Items only visible to admins
+  const adminItems = [
+    { icon: <Globe />, text: "Websites", href: "/websites", order: 2 },
+    {
+      icon: <Network />,
+      text: "Infrastructure",
+      dropdown: [
+        {
+          icon: <Server />,
+          text: "Sending Servers",
+          href: "/servers",
+          order: 1,
+        },
+        { icon: <DoorOpen />, text: "Gateways", href: "/gateways", order: 2 },
+      ],
+      order: 3,
+    },
+    {
+      icon: <LuUsers />,
+      text: "Customers",
+      dropdown: [
+        { icon: <LuUsers />, text: "Customers", href: "/customers", order: 1 },
+        {
+          icon: <CgMediaLive />,
+          text: "Customer Sessions",
+          href: "/account/sessions",
+          order: 2,
+        },
+      ],
+      order: 4,
+    },
+    { icon: <LuPackage />, text: "Plans", href: "/plans", order: 5 },
+    {
+      icon: <ShieldUser />,
+      text: "Admin Management",
+      dropdown: [
+        {
+          icon: <UserStar />,
+          text: "Admins Management",
+          href: "/admin/admins-manage",
+          order: 1,
+        },
+        {
+          icon: <CgMediaLive />,
+          text: "Admin Sessions",
+          href: "/admin/sessions",
+          order: 2,
+        },
+        { icon: <FolderPen />, text: "Roles", href: "/admin/roles", order: 3 },
+        {
+          icon: <GoGitPullRequest />,
+          text: "Permissions",
+          href: "/admin/permissions",
+          order: 4,
+        },
+      ],
+      order: 6,
+    },
+    {
+      icon: <FaGears />,
+      text: "Settings",
+      dropdown: [
+        {
+          icon: <GoGear />,
+          text: "Admin Auth Settings",
+          href: "/admin/auth/settings",
+          order: 1,
+        },
+        {
+          icon: <GoFile />,
+          text: "CSV Management",
+          href: "/csv-manager",
+          order: 2,
+        },
+      ],
+      order: 7,
+    },
+  ];
+
+  // Return combined and sorted navigation items based on user type
+  const items = [
+    ...baseItems,
+    ...(admin ? [...adminItems, ...customerItems] : []),
+    ...(customer ? customerItems : []),
+  ];
+
+  return items.sort((a, b) => a.order - b.order);
+};
 
 // User menu items
 const USER_MENU_ITEMS = [
   { label: "My Account", icon: <BadgeCheck />, href: "/account" },
-  { label: "Credits & Subscription", icon: <CreditCard />, href: "/account/subscription" },
+  {
+    label: "Credits & Subscription",
+    icon: <CreditCard />,
+    href: "/account/subscription",
+  },
   { label: "Billing", icon: <FileText />, href: "/account/billing" },
   { label: "Settings", icon: <Settings />, href: "/account/settings" },
 ];
@@ -161,7 +236,7 @@ const ADMIN_MENU_ITEMS = [
 // Utility functions
 const getInitials = (user) => {
   if (!user?.firstName || typeof user.firstName !== "string") return "U";
-  return user.firstName.charAt(0).toUpperCase();
+  return user.firstName.charAt(0);
 };
 
 const getFullName = (user) => {
@@ -170,7 +245,8 @@ const getFullName = (user) => {
 };
 
 const getEmail = (user) => {
-  if (!user?.email || typeof user.email !== "string") return "No email available";
+  if (!user?.email || typeof user.email !== "string")
+    return "No email available";
   return user.email;
 };
 
@@ -194,7 +270,7 @@ const useLocalStorage = (key, defaultValue) => {
       if (stored === null || stored === "undefined") return defaultValue;
       return JSON.parse(stored);
     } catch (e) {
-      console.warn(`Error parsing localStorage key “${key}”:`, e);
+      console.warn(`Error parsing localStorage key "${key}":`, e);
       return defaultValue;
     }
   });
@@ -225,233 +301,232 @@ const useDropdownState = (sideItems, pathname) => {
 };
 
 // Components
-const IconTile = memo(({ svg, size = "md", dark = false, hovered = false, active = false }) => {
-  const { container, icon } = ICON_SIZES[size];
-  
-  const bgClasses = useMemo(() => {
-    if (active) return dark ? "bg-white text-[#0e1635]" : "bg-white text-zinc-600";
-    if (hovered) return dark ? "bg-white text-[#0e1635]" : "bg-zinc-200 text-zinc-600";
-    return dark ? "bg-white/5 text-white/80" : "bg-zinc-100 text-zinc-500";
-  }, [active, hovered, dark]);
+const IconTile = memo(
+  ({ svg, size = "md", hovered = false, active = false }) => {
+    const { container, icon } = ICON_SIZES[size];
 
-  const renderedIcon = React.cloneElement(svg, {
-    className: `${icon} ${svg.props?.className || ""}`.trim(),
-    focusable: "false",
-    "aria-hidden": "true",
-  });
+    const bgClasses = useMemo(() => {
+      if (active) return BUTTON_STYLES.iconActive;
+      if (hovered) return BUTTON_STYLES.iconHover;
+      return BUTTON_STYLES.iconBase;
+    }, [active, hovered]);
 
-  return (
-    <div className={`rounded-md flex items-center justify-center transition-colors ${container} ${bgClasses}`}>
-      {renderedIcon}
-    </div>
-  );
-});
+    const renderedIcon = React.cloneElement(svg, {
+      className: `${icon} ${svg.props?.className || ""}`.trim(),
+      focusable: "false",
+      "aria-hidden": "true",
+    });
+
+    return (
+      <div
+        className={`rounded-md flex items-center justify-center transition-colors ${container} ${bgClasses}`}
+      >
+        {renderedIcon}
+      </div>
+    );
+  }
+);
 
 IconTile.displayName = "IconTile";
 IconTile.propTypes = {
   svg: PropTypes.element.isRequired,
   size: PropTypes.oneOf(["sm", "md", "lg"]),
-  dark: PropTypes.bool,
   hovered: PropTypes.bool,
   active: PropTypes.bool,
 };
 
-const SidebarButton = memo(({
-  svg,
-  text,
-  active = false,
-  hasDropdown = false,
-  isDropdownOpen = false,
-  isChild = false,
-  collapsed = false,
-  dark = false,
-  forceHover = false,
-  onClick,
-}) => {
-  const colors = THEME_COLORS[dark ? "dark" : "light"];
-  const hovered = !active && forceHover;
+const SidebarButton = memo(
+  ({
+    svg,
+    text,
+    active = false,
+    hasDropdown = false,
+    isDropdownOpen = false,
+    isChild = false,
+    collapsed = false,
+    forceHover = false,
+    onClick,
+  }) => {
+    const hovered = !active && forceHover;
 
-  const buttonClasses = useMemo(() => {
-    const baseClasses = collapsed
-      ? "group center-flex py-1 transition-all duration-200 cursor-pointer relative overflow-hidden w-full rounded-md justify-center"
-      : "group flex items-center gap-3 px-3 py-2.5 transition-all duration-200 cursor-pointer relative overflow-hidden w-full rounded-md";
+    const buttonClasses = useMemo(() => {
+      const baseClasses = collapsed
+        ? "group center-flex py-1 transition-all duration-200 cursor-pointer relative overflow-hidden w-full rounded-md justify-center"
+        : "group flex items-center gap-3 px-3 py-2.5 transition-all duration-200 cursor-pointer relative overflow-hidden w-full rounded-md";
 
-    const stateClasses = active
-      ? `${colors.activeBg} ${colors.activeText} ${colors.border} border`
-      : hovered
-      ? `${colors.hoverBg} ${colors.hoverText}`
-      : `${colors.idleBg} ${colors.idleText}`;
+      const stateClasses = active
+        ? BUTTON_STYLES.active
+        : `${BUTTON_STYLES.base} ${BUTTON_STYLES.hover}`;
 
-    const dropdownClasses = isDropdownOpen && !collapsed
-      ? `${colors.activeBg} ${colors.activeText}`
-      : "";
+      const dropdownClasses =
+        isDropdownOpen && !collapsed ? BUTTON_STYLES.active : "";
 
-    return `${baseClasses} ${isChild ? "text-sm" : ""} ${stateClasses} ${dropdownClasses}`.trim();
-  }, [collapsed, isChild, active, hovered, isDropdownOpen, colors]);
+      return `${baseClasses} ${
+        isChild ? "text-sm" : ""
+      } ${stateClasses} ${dropdownClasses}`.trim();
+    }, [collapsed, isChild, active, hovered, isDropdownOpen]);
 
-  return (
-    <button
-      onClick={onClick}
-      aria-label={text}
-      title={collapsed ? text : undefined}
-      className={buttonClasses}
-    >
-      {!collapsed && active && !isChild && (
-        <div className="absolute left-0 top-0 h-full w-1.5 bg-white/70" />
-      )}
-      
-      <IconTile
-        svg={svg}
-        size={isChild ? "sm" : "lg"}
-        dark={dark}
-        hovered={hovered}
-        active={active}
-      />
-      
-      {!collapsed && (
-        <span className={`flex-1 text-left ${isChild ? "text-xs" : "text-sm"}`}>
-          {text}
-        </span>
-      )}
-      
-      {!collapsed && hasDropdown && (
-        <LuChevronDown
-          className={`w-4 h-4 transition-transform duration-200 ${
-            isDropdownOpen ? "rotate-180" : ""
-          } ${hovered ? colors.chevronHover : colors.chevron}`}
+    return (
+      <button
+        onClick={onClick}
+        aria-label={text}
+        title={collapsed ? text : undefined}
+        className={buttonClasses}
+      >
+        {!collapsed && active && !isChild && (
+          <div className="absolute left-0 top-0 h-full w-1.5 bg-white/70" />
+        )}
+
+        <IconTile
+          svg={svg}
+          size={isChild ? "sm" : "lg"}
+          hovered={hovered}
+          active={active}
         />
-      )}
-    </button>
-  );
-});
+
+        {!collapsed && (
+          <span
+            className={`flex-1 text-left ${isChild ? "text-xs" : "text-sm"}`}
+          >
+            {text}
+          </span>
+        )}
+
+        {!collapsed && hasDropdown && (
+          <LuChevronDown
+            className={`w-4 h-4 transition-transform duration-200 ${
+              isDropdownOpen ? "rotate-180" : ""
+            } ${
+              hovered ? BUTTON_STYLES.chevronHover : BUTTON_STYLES.chevronBase
+            }`}
+          />
+        )}
+      </button>
+    );
+  }
+);
 
 SidebarButton.displayName = "SidebarButton";
-SidebarButton.propTypes = {
-  svg: PropTypes.element.isRequired,
-  text: PropTypes.string.isRequired,
-  active: PropTypes.bool,
-  hasDropdown: PropTypes.bool,
-  isDropdownOpen: PropTypes.bool,
-  isChild: PropTypes.bool,
-  collapsed: PropTypes.bool,
-  dark: PropTypes.bool,
-  forceHover: PropTypes.bool,
-  onClick: PropTypes.func.isRequired,
-};
 
-const Flyout = memo(({ label, items, isDropdown, pos, onMouseEnter, onMouseLeave, onItemClick }) => {
-  return createPortal(
-    <div
-      style={{ 
-        position: "fixed", 
-        top: pos.top, 
-        left: pos.left, 
-        zIndex: 9999,
-        width: LAYOUT_CONSTANTS.FLYOUT_WIDTH 
-      }}
-      className="rounded-r-2xl shadow-2xl border border-white/10 bg-second text-white py-3"
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      <div className="px-4 pb-2 text-xs font-semibold text-white/70 tracking-wide uppercase">
-        {label}
-      </div>
-      
-      <div className={`px-2 ${isDropdown ? "flex flex-col gap-1" : ""}`}>
-        {isDropdown ? (
-          items.map((item) => (
+const Flyout = memo(
+  ({
+    label,
+    items,
+    isDropdown,
+    pos,
+    onMouseEnter,
+    onMouseLeave,
+    onItemClick,
+  }) => {
+    // Calculate max height based on remaining viewport space
+    const maxHeight = Math.max(150, window.innerHeight - pos.top - 40);
+
+    return createPortal(
+      <div
+        style={{
+          position: "fixed",
+          top: `${pos.top}px`, // Ensure px unit
+          left: `${pos.left}px`, // Ensure px unit
+          zIndex: 9999,
+          width: LAYOUT_CONSTANTS.FLYOUT_WIDTH,
+          maxHeight: `${maxHeight}px`,
+        }}
+        className="rounded-r-2xl shadow-2xl border border-white/10 bg-second text-white py-3 overflow-hidden"
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <div className="px-4 pb-2 text-xs font-semibold text-white/70 tracking-wide uppercase">
+          {label}
+        </div>
+
+        <div
+          className={`px-2 ${isDropdown ? "flex flex-col gap-1" : ""}`}
+          style={{
+            maxHeight: `${maxHeight - 60}px`, // Subtract header height
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}
+        >
+          {isDropdown ? (
+            items.map((item) => (
+              <button
+                key={item.text}
+                onClick={() => onItemClick(item.href)}
+                className={`group flex items-center gap-3 rounded-md text-sm transition-colors p-2 flex-shrink-0 ${BUTTON_STYLES.base} ${BUTTON_STYLES.hover}`}
+              >
+                <IconTile svg={item.icon} size="sm" />
+                <span className="flex-1 text-left">{item.text}</span>
+                <LuChevronRight className="w-4 h-4 text-white/40 group-hover:text-white/80" />
+              </button>
+            ))
+          ) : (
             <button
-              key={item.text}
-              onClick={() => onItemClick(item.href)}
-              className="group flex items-center gap-3 rounded-md text-sm text-white/90 hover:text-white hover:bg-white/10 transition-colors p-2"
+              onClick={() => onItemClick(items[0].href)}
+              className={`w-full group flex items-center gap-3 rounded-md text-sm transition-colors p-2 ${BUTTON_STYLES.base} ${BUTTON_STYLES.hover}`}
             >
-              <IconTile svg={item.icon} size="sm" dark />
-              <span className="flex-1 text-left">{item.text}</span>
-              <LuChevronRight className="w-4 h-4 text-white/40 group-hover:text-white/80" />
+              <IconTile svg={items[0].icon} size="sm" />
+              <span className="flex-1 text-left">{items[0].text}</span>
+              <LuChevronRight className="w-4 h-4 text-white/40 group-hover:text-white/60" />
             </button>
-          ))
-        ) : (
-          <button
-            onClick={() => onItemClick(items[0].href)}
-            className="w-full group flex items-center gap-3 rounded-md text-sm text-white/90 hover:text-white hover:bg-white/10 transition-colors p-2"
-          >
-            <IconTile svg={items[0].icon} size="sm" dark />
-            <span className="flex-1 text-left">{items[0].text}</span>
-            <LuChevronRight className="w-4 h-4 text-white/40 group-hover:text-white/60" />
-          </button>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-});
+          )}
+        </div>
+      </div>,
+      document.body
+    );
+  }
+);
 
 Flyout.displayName = "Flyout";
-Flyout.propTypes = {
-  label: PropTypes.string.isRequired,
-  items: PropTypes.arrayOf(
-    PropTypes.shape({
-      icon: PropTypes.element.isRequired,
-      text: PropTypes.string.isRequired,
-      href: PropTypes.string,
-    })
-  ).isRequired,
-  isDropdown: PropTypes.bool.isRequired,
-  pos: PropTypes.shape({ 
-    top: PropTypes.number, 
-    left: PropTypes.number 
-  }).isRequired,
-  onMouseEnter: PropTypes.func.isRequired,
-  onMouseLeave: PropTypes.func.isRequired,
-  onItemClick: PropTypes.func.isRequired,
-};
 
 const UserAvatar = memo(({ user, size = "sm" }) => {
-  const sizeClasses = size === "lg" ? "w-12 h-12 text-lg" : "w-6 h-6";
-  
+  const sizeClasses = size === "lg" ? "w-12 h-12 text-lg" : "w-7 h-7";
+
   return (
-    <div className={`${sizeClasses} rounded-md bg-white/30 text-white/90 font-medium tracking-wide center-flex first-letter:uppercase`}>
+    <div
+      className={`${sizeClasses} rounded-sm bg-white/30 text-white/90 font-medium tracking-wide center-flex uppercase`}
+    >
       {getInitials(user)}
     </div>
   );
 });
 
 UserAvatar.displayName = "UserAvatar";
-UserAvatar.propTypes = {
-  user: PropTypes.object,
-  size: PropTypes.oneOf(["sm", "lg"]),
-};
 
 const UserStatus = memo(({ user }) => {
   const isActive = isUserActive(user);
-  
+
   return (
-    <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-sm text-xs font-medium ${
-      isActive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
-    }`}>
-      <span className={`h-2 w-2 rounded-full ${
-        isActive ? "bg-emerald-500" : "bg-red-500"
-      } animate-pulse`} />
+    <span
+      className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-sm text-xs font-medium ${
+        isActive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+      }`}
+    >
+      <span
+        className={`h-2 w-2 rounded-full ${
+          isActive ? "bg-emerald-500" : "bg-red-500"
+        } animate-pulse`}
+      />
       {isActive ? "Account Active" : "Account Inactive"}
     </span>
   );
 });
 
 UserStatus.displayName = "UserStatus";
-UserStatus.propTypes = {
-  user: PropTypes.object,
-};
 
 // Main component
 const SidebarWrapper = ({ children }) => {
   const { customer, resetCustomer } = useCustomerStore();
   const { admin, resetAdmin } = useAdminStore();
+
   const router = useRouter();
   const pathname = usePathname();
 
   // State management
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useLocalStorage(LAYOUT_CONSTANTS.COLLAPSE_KEY, false);
+  const [isCollapsed, setIsCollapsed] = useLocalStorage(
+    LAYOUT_CONSTANTS.COLLAPSE_KEY,
+    false
+  );
   const [openDropdowns, setOpenDropdowns] = useState(() => new Set());
   const [flyoutIndex, setFlyoutIndex] = useState(null);
   const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -462,7 +537,10 @@ const SidebarWrapper = ({ children }) => {
   const itemRefs = useRef([]);
 
   // Memoized values
-  const sideItems = useMemo(() => createNavigationItems(customer, admin), [customer, admin]);
+  const sideItems = useMemo(
+    () => createNavigationItems(customer, admin),
+    [customer, admin]
+  );
   const autoOpenDropdowns = useDropdownState(sideItems, pathname);
 
   const currentUser = customer || admin;
@@ -471,7 +549,7 @@ const SidebarWrapper = ({ children }) => {
   const currentPage = useMemo(() => {
     const main = sideItems.find((item) => item.href === pathname);
     if (main) return main.text;
-    
+
     for (const item of sideItems) {
       const child = item.dropdown?.find((c) => c.href === pathname);
       if (child) return child.text;
@@ -481,7 +559,8 @@ const SidebarWrapper = ({ children }) => {
 
   // Callbacks
   const isItemActive = useCallback(
-    (item) => pathname === item.href || item.dropdown?.some((c) => pathname === c.href),
+    (item) =>
+      pathname === item.href || item.dropdown?.some((c) => pathname === c.href),
     [pathname]
   );
 
@@ -520,22 +599,41 @@ const SidebarWrapper = ({ children }) => {
   }, []);
 
   const computeFlyoutPos = useCallback((rect) => {
-    const left = Math.min(
-      rect.right + LAYOUT_CONSTANTS.GAP,
-      window.innerWidth - LAYOUT_CONSTANTS.GAP - LAYOUT_CONSTANTS.FLYOUT_WIDTH
-    );
-    const top = Math.max(8, Math.min(rect.top, window.innerHeight - 368));
+    // Get the exact position of the hovered sidebar item
+    const itemTop = rect.top;
+    const itemLeft = rect.left;
+    const itemRight = rect.right;
+    const itemHeight = rect.height;
+    const left = itemRight + LAYOUT_CONSTANTS.GAP;
+    let top = itemTop;
+
+    const ESTIMATED_FLYOUT_HEIGHT = 200; // Conservative estimate
+    const viewportHeight = window.innerHeight;
+
+    if (top + ESTIMATED_FLYOUT_HEIGHT > viewportHeight - 20) {
+      top = viewportHeight - ESTIMATED_FLYOUT_HEIGHT - 20;
+      top = Math.max(20, top);
+    }
     return { top, left };
   }, []);
 
-  const openFlyoutForIndex = useCallback((index) => {
-    const anchor = itemRefs.current[index];
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    setFlyoutPos(computeFlyoutPos(rect));
-    setHoveredIndex(index);
-    setFlyoutIndex(index);
-  }, [computeFlyoutPos]);
+  const openFlyoutForIndex = useCallback(
+    (index) => {
+      const anchor = itemRefs.current[index];
+      if (!anchor) {
+        return;
+      }
+
+      // Get the bounding rect of the actual sidebar button
+      const rect = anchor.getBoundingClientRect();
+
+      const pos = computeFlyoutPos(rect);
+      setFlyoutPos(pos);
+      setHoveredIndex(index);
+      setFlyoutIndex(index);
+    },
+    [computeFlyoutPos]
+  );
 
   const logout = useCallback(() => {
     resetCustomer();
@@ -554,7 +652,7 @@ const SidebarWrapper = ({ children }) => {
 
   useEffect(() => {
     if (flyoutIndex === null) return;
-    
+
     const updateFlyoutPosition = () => {
       const anchor = itemRefs.current[flyoutIndex];
       if (!anchor) return;
@@ -589,11 +687,11 @@ const SidebarWrapper = ({ children }) => {
       <div className="py-2">
         <div
           className={`
-            ${isCollapsed ? "w-16" : "w-64"}
+            ${isCollapsed ? "w-16" : "w-72"}
             h-full bg-primary text-zinc-100 flex flex-col z-40 fixed lg:static 
             transform transition-[transform,width] duration-300 ease-out
             ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-            lg:translate-x-0 overflow-x-visible border-r border-white/10 rounded-r-xl
+            lg:translate-x-0 overflow-x-visible border-r border-white/10 rounded-r-xl 
           `}
           onMouseLeave={() => {
             if (!isCollapsed) {
@@ -619,12 +717,14 @@ const SidebarWrapper = ({ children }) => {
                   </>
                 )}
               </div>
-              
+
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setIsCollapsed(prev => !prev)}
+                  onClick={() => setIsCollapsed((prev) => !prev)}
                   className="hidden lg:inline-flex p-2 text-white/70 hover:bg-white/10 hover:text-white rounded-lg"
-                  aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  aria-label={
+                    isCollapsed ? "Expand sidebar" : "Collapse sidebar"
+                  }
                   title={isCollapsed ? "Expand" : "Collapse"}
                 >
                   <PanelRightOpen className="w-5 h-5" />
@@ -648,76 +748,84 @@ const SidebarWrapper = ({ children }) => {
             )}
 
             <div className="flex flex-col gap-1">
-              {sideItems.map((item, index) => {
-                const active = isItemActive(item);
-                const forceHover = isCollapsed && (hoveredIndex === index || flyoutIndex === index);
-                const hasDropdown = !!item.dropdown;
+              {sideItems
+                .sort((a, b) => a.order - b.order)
+                .map((item, index) => {
+                  const active = isItemActive(item);
+                  const forceHover =
+                    isCollapsed &&
+                    (hoveredIndex === index || flyoutIndex === index);
+                  const hasDropdown = !!item.dropdown;
 
-                return (
-                  <div
-                    key={`${item.text}-${index}`}
-                    className="relative"
-                    ref={(el) => (itemRefs.current[index] = el)}
-                    onMouseEnter={() => {
-                      if (isCollapsed) {
-                        cancelClose();
-                        openFlyoutForIndex(index);
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      if (isCollapsed) {
-                        scheduleClose(100);
-                      }
-                    }}
-                  >
-                    <SidebarButton
-                      svg={item.icon}
-                      text={item.text}
-                      active={active}
-                      hasDropdown={hasDropdown}
-                      isDropdownOpen={openDropdowns.has(index)}
-                      collapsed={isCollapsed}
-                      dark
-                      forceHover={forceHover}
-                      onClick={() => {
-                        if (hasDropdown) {
-                          if (isCollapsed) {
-                            openFlyoutForIndex(index);
-                          } else {
-                            toggleDropdown(index);
-                          }
-                        } else if (item.href) {
-                          handleNavigation(item.href);
+                  return (
+                    <div
+                      key={`${item.text}-${index}`}
+                      className="relative"
+                      ref={(el) => {
+                        itemRefs.current[index] = el;
+                      }}
+                      onMouseEnter={() => {
+                        if (isCollapsed) {
+                          cancelClose();
+                          openFlyoutForIndex(index);
                         }
                       }}
-                    />
+                      onMouseLeave={() => {
+                        if (isCollapsed) {
+                          scheduleClose(100);
+                        }
+                      }}
+                    >
+                      <SidebarButton
+                        svg={item.icon}
+                        text={item.text}
+                        active={active}
+                        hasDropdown={hasDropdown}
+                        isDropdownOpen={openDropdowns.has(index)}
+                        collapsed={isCollapsed}
+                        forceHover={forceHover}
+                        onClick={() => {
+                          if (hasDropdown) {
+                            if (isCollapsed) {
+                              openFlyoutForIndex(index);
+                            } else {
+                              toggleDropdown(index);
+                            }
+                          } else if (item.href) {
+                            handleNavigation(item.href);
+                          }
+                        }}
+                      />
 
-                    {/* Dropdown menu */}
-                    {!isCollapsed && hasDropdown && (
-                      <div
-                        className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                          openDropdowns.has(index) ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-                        }`}
-                      >
-                        <div className="ml-3 mt-1 space-y-1 border-l border-white/10 p-1.5">
-                          {item.dropdown.map((dropdownItem) => (
-                            <SidebarButton
-                              key={dropdownItem.text}
-                              svg={dropdownItem.icon}
-                              text={dropdownItem.text}
-                              active={pathname === dropdownItem.href}
-                              isChild
-                              collapsed={false}
-                              dark
-                              onClick={() => handleNavigation(dropdownItem.href)}
-                            />
-                          ))}
+                      {/* Dropdown menu */}
+                      {!isCollapsed && hasDropdown && (
+                        <div
+                          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                            openDropdowns.has(index)
+                              ? "max-h-96 opacity-100"
+                              : "max-h-0 opacity-0"
+                          }`}
+                        >
+                          <div className="ml-3 mt-1 space-y-1 border-l border-white/10 p-1.5">
+                            {item.dropdown.map((dropdownItem) => (
+                              <SidebarButton
+                                key={dropdownItem.text}
+                                svg={dropdownItem.icon}
+                                text={dropdownItem.text}
+                                active={pathname === dropdownItem.href}
+                                isChild
+                                collapsed={false}
+                                onClick={() =>
+                                  handleNavigation(dropdownItem.href)
+                                }
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           </div>
 
@@ -747,37 +855,48 @@ const SidebarWrapper = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 h-full overflow-hidden space-y-2 flex flex-col px-2">
         {/* Top Bar */}
-        <div className="bg-primary px-6 py-3 sticky top-0 z-20 rounded-b-xl text-white">
+        <div className="bg-primary px-3 md:px-6 py-3 sticky top-0 z-20 rounded-b-xl text-white">
           <div className="flex items-center justify-between">
-            <button
-              onClick={() => setIsMobileOpen(true)}
-              className={`lg:hidden p-2 bg-white shadow border border-zinc-300 text-zinc-700 hover:text-zinc-900 hover:border-zinc-400 transition-all duration-200 rounded-md ${
-                isMobileOpen ? "opacity-0 pointer-events-none" : "opacity-100 pointer-events-auto"
-              }`}
-            >
-              <LuMenu className="w-4 h-4" />
-            </button>
-            
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-2 text-sm">
-              <span>{process.env.NEXT_PUBLIC_PROJECT_NAME}</span>
-              <LuChevronRight className="w-4 h-4 text-zinc-200" />
-              {sideItems.map((item, idx) => {
-                const childMatch = item.dropdown?.find((c) => c.href === pathname);
-                if (childMatch) {
-                  return (
-                    <React.Fragment key={`breadcrumb-${idx}`}>
-                      <span className="text-zinc-100">{item.text}</span>
-                      <LuChevronRight className="w-4 h-4 text-zinc-200" />
-                      <span className="text-zinc-100 font-medium">{childMatch.text}</span>
-                    </React.Fragment>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsMobileOpen(true)}
+                className={`lg:hidden p-2 bg-white shadow border border-zinc-300 text-zinc-700 hover:text-zinc-900 hover:border-zinc-400 transition-all duration-200 rounded-md ${
+                  isMobileOpen
+                    ? "opacity-0 pointer-events-none"
+                    : "opacity-100 pointer-events-auto"
+                }`}
+              >
+                <LuMenu className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center justify-start flex-wrap gap-1 text-xs md:text-sm">
+                <span>{process.env.NEXT_PUBLIC_PROJECT_NAME}</span>
+                <LuChevronRight className="w-4 h-4 text-zinc-200" />
+                {sideItems.map((item, idx) => {
+                  const childMatch = item.dropdown?.find(
+                    (c) => c.href === pathname
                   );
-                }
-                return null;
-              })}
-              {!sideItems.some((item) => item.dropdown?.some((c) => c.href === pathname)) && (
-                <span className="text-zinc-100 font-medium">{currentPage}</span>
-              )}
+                  if (childMatch) {
+                    return (
+                      <React.Fragment key={`breadcrumb-${idx}`}>
+                        <span className="text-zinc-100">{item.text}</span>
+                        <LuChevronRight className="w-4 h-4 text-zinc-200" />
+                        <span className="text-zinc-100 font-medium">
+                          {childMatch.text}
+                        </span>
+                      </React.Fragment>
+                    );
+                  }
+                  return null;
+                })}
+                {!sideItems.some((item) =>
+                  item.dropdown?.some((c) => c.href === pathname)
+                ) && (
+                  <span className="text-zinc-100 font-medium">
+                    {currentPage}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* User Menu */}
@@ -799,10 +918,10 @@ const SidebarWrapper = ({ children }) => {
                 role="menu"
                 aria-label="Account menu"
                 className="
-                  absolute -right-5 top-full mt-2 z-50
-                  w-[620px] max-w-[calc(100vw-2rem)]
+                  absolute -right-2 md:-right-5 top-full mt-2 z-50
+                  w-[620px] max-w-[94vw]
                   bg-primary settings-pattern
-                  rounded-b-xl
+                  rounded-b-lg
                   opacity-0 scale-95 translate-y-1 invisible
                   transition-all duration-200 origin-top-right
                   group-hover:opacity-100 group-hover:scale-100 group-hover:translate-y-0 group-hover:visible
@@ -895,7 +1014,9 @@ const SidebarWrapper = ({ children }) => {
           }
           pos={flyoutPos}
           onMouseEnter={cancelClose}
-          onMouseLeave={() => scheduleClose(LAYOUT_CONSTANTS.FLYOUT_CLOSE_DELAY)}
+          onMouseLeave={() =>
+            scheduleClose(LAYOUT_CONSTANTS.FLYOUT_CLOSE_DELAY)
+          }
           onItemClick={handleNavigation}
         />
       )}

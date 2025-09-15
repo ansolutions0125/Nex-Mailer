@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { Eye, EyeOff, Mail, Trash2, ShieldAlert } from "lucide-react";
+import { Eye, EyeOff, Mail, Trash2, ShieldAlert, Lock, X } from "lucide-react";
 import { Checkbox, inputStyles, labelStyles } from "@/presets/styles";
 import { useToastStore } from "@/store/useToastStore";
 import useCustomerStore from "@/store/useCustomerStore";
 import { DropdownSearch } from "@/components/DropdownSearch";
 import { useRouter } from "next/navigation";
 
-/* ───────────────────────────────────────────
-   Small utilities for rate limit & toast dedupe
-   ─────────────────────────────────────────── */
+/* ------------------------------------------------------------------ */
+/* Small utilities for rate limit & toast dedupe                     */
+/* ------------------------------------------------------------------ */
 const COOLDOWN_MS = 2000; // submit throttle window
 const TOAST_TTL_MS = 3000; // same-toast dedupe window
 
@@ -35,9 +35,9 @@ const createToastOnce = (ttlMs = 3000) => {
   };
 };
 
-/* ───────────────────────────────────────────
-   REUSABLE INPUT COMPONENTS
-   ─────────────────────────────────────────── */
+/* ------------------------------------------------------------------ */
+/* REUSABLE INPUT COMPONENTS                                          */
+/* ------------------------------------------------------------------ */
 const Input = ({
   label,
   type = "text",
@@ -95,6 +95,7 @@ const PasswordInput = ({
   helperText,
   forgotPasswordLink = false,
   onForgotPassword,
+  name = "password",
 }) => {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -113,7 +114,7 @@ const PasswordInput = ({
         )}
       </div>
       <Input
-        name="password"
+        name={name}
         type={showPassword ? "text" : "password"}
         value={value}
         onChange={onChange}
@@ -139,9 +140,9 @@ const PasswordInput = ({
   );
 };
 
-/* ───────────────────────────────────────────
-   AUTH INPUT BLOCKS
-   ─────────────────────────────────────────── */
+/* ------------------------------------------------------------------ */
+/* AUTH INPUT BLOCKS                                                  */
+/* ------------------------------------------------------------------ */
 const SignInInputs = ({
   email,
   setEmail,
@@ -323,9 +324,9 @@ const MagicLinkInputs = ({ email, setEmail }) => (
   </div>
 );
 
-/* ───────────────────────────────────────────
-   TERMS CHECKBOX + MESSAGES
-   ─────────────────────────────────────────── */
+/* ------------------------------------------------------------------ */
+/* TERMS CHECKBOX + MESSAGES                                          */
+/* ------------------------------------------------------------------ */
 const TermsCheckbox = ({ agree, setAgree }) => (
   <label className="flex items-start gap-2 cursor-pointer">
     <Checkbox selected={agree} onChange={() => setAgree(!agree)} />
@@ -374,9 +375,9 @@ const InfoMessage = ({ message }) => {
   );
 };
 
-/* ───────────────────────────────────────────
-   SESSION LIMIT UI (ported from AdminAuth)
-   ─────────────────────────────────────────── */
+/* ------------------------------------------------------------------ */
+/* SESSION LIMIT UI (ported from AdminAuth)                          */
+/* ------------------------------------------------------------------ */
 const formatDT = (v) => {
   try {
     return new Date(v).toLocaleString();
@@ -451,7 +452,7 @@ const SessionCard = ({ s, selected, toggle }) => {
           <div>
             <p className="font-medium text-zinc-900">Logged In</p>
             <p className="text-xs text-zinc-500">
-              {jti ? `sessionId: ${jti}` : "\u2014"}
+              {jti ? `sessionId: ${jti}` : "—"}
             </p>
           </div>
         </div>
@@ -470,9 +471,117 @@ const SessionCard = ({ s, selected, toggle }) => {
   );
 };
 
-/* ───────────────────────────────────────────
-   MAIN AUTH COMPONENT
-   ─────────────────────────────────────────── */
+/* ------------------------------------------------------------------ */
+/* Re-auth Modal (customer email + password before deletion)         */
+/* ------------------------------------------------------------------ */
+const ReauthModal = ({
+  open,
+  onClose,
+  onConfirm,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  loading = false,
+  errors = [],
+}) => {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      aria-modal="true"
+      role="dialog"
+    >
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-md mx-4 rounded-2xl bg-white border border-zinc-200 shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
+              <Lock className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-zinc-900">
+                Confirm your identity
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Enter your email and password to delete the selected
+                session(s).
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-md text-zinc-500 hover:text-zinc-800"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <ErrorMessage errors={errors} />
+          <Input
+            label="Email"
+            type="email"
+            name="reauth-email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
+            autoComplete="email"
+            required
+          />
+          <PasswordInput
+            label="Password"
+            name="reauth-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            autoComplete="current-password"
+            forgotPasswordLink={false}
+          />
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3 border-t border-zinc-200 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn btn-sm btn-second"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="btn btn-sm btn-third disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {loading ? (
+              <>
+                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4" />
+                Confirm & Delete
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* MAIN AUTH COMPONENT                                                */
+/* ------------------------------------------------------------------ */
 const CustomerAuth = () => {
   const router = useRouter()
   const { showSuccess } = useToastStore(); // use only showSuccess(message)
@@ -494,11 +603,18 @@ const CustomerAuth = () => {
   const [address, setAddress] = useState("");
   const [country, setCountry] = useState("");
 
-  // Session‑limit state (ported)
+  // Session-limit state (ported)
   const [sessions, setSessions] = useState([]);
   const [limit, setLimit] = useState(5);
   const [customerId, setCustomerId] = useState("");
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Re-auth modal state
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const [reauthEmail, setReauthEmail] = useState("");
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthLoading, setReauthLoading] = useState(false);
+  const [reauthErrors, setReauthErrors] = useState([]);
 
   // Guards
   const submitLimiterRef = useRef(createRateLimiter(COOLDOWN_MS));
@@ -565,44 +681,59 @@ const CustomerAuth = () => {
     });
   };
 
-  const handleDelete = async (ids) => {
-    if (!ids?.length) return;
-    setLoading(true);
-    setErrors([]);
-    setInfo("");
+  // Confirm deletion after re-auth
+  const handleConfirmDeletion = async () => {
+    const errs = [];
+    if (!isEmail(reauthEmail)) errs.push("Please enter a valid email.");
+    if (!reauthPassword || reauthPassword.length < 8)
+      errs.push("Password must be at least 8 characters.");
+    if (!selectedIds.size) errs.push("Select at least one session to delete.");
+    if (errs.length) {
+      setReauthErrors(errs);
+      return;
+    }
+
+    setReauthErrors([]);
+    setReauthLoading(true);
+
     try {
-      // Expect a customers sessions delete endpoint analogous to admin:
-      // body: { sessionIds: [...], customerId }
-      const res = await fetch("/api/customers/sessions", {
+      const ids = [...selectedIds];
+      const res = await fetch(`/api/customers/sessions`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionIds: ids, customerId }),
+        body: JSON.stringify({
+          action: "customer-sessions-limit-reached",
+          email: reauthEmail,
+          password: reauthPassword,
+          sessionIds: ids,
+          customerId,
+        }),
       });
       const json = await res.json().catch(() => ({}));
+
       if (!res.ok || json?.success === false) {
         throw new Error(json?.message || "Failed to delete sessions");
       }
 
-      // Update locally
+      // remove deleted from local list
       setSessions((prev) => prev.filter((s) => !ids.includes(s._id)));
       setSelectedIds((prev) => {
         const n = new Set(prev);
         ids.forEach((i) => n.delete(i));
         return n;
       });
-      setInfo("Selected session(s) deleted.");
-      safeShowSuccess("cust:sessions:deleted", "Selected session(s) deleted.");
 
-      // If we are now under the limit, nudge user back to sign in
-      const remaining = sessions.length - ids.length;
-      if (remaining < (limit ?? 5)) {
-        // Go back to sign in so they can retry
-        setMode("signin");
-      }
+      setInfo("Selected session(s) deleted.");
+      setReauthOpen(false);
+      safeShowSuccess("cust:sessions:deleted", "Selected session(s) deleted.");
+      
+      // Switch back to signin mode after successful deletion
+      setMode("signin");
+      
     } catch (e) {
-      setErrors([e.message]);
+      setReauthErrors([e.message || "Deletion failed. Please try again."]);
     } finally {
-      setLoading(false);
+      setReauthLoading(false);
     }
   };
 
@@ -612,6 +743,17 @@ const CustomerAuth = () => {
     if (!submitLimiterRef.current()) return;
 
     resetFeedback();
+
+    if (mode === "SessionLimit") {
+      // open re-auth modal after selection
+      if (!selectedIds.size) {
+        setErrors(["Select at least one session to delete."]);
+        return;
+      }
+      setReauthErrors([]);
+      setReauthOpen(true);
+      return;
+    }
 
     if (mode !== "SessionLimit") {
       const eList = validate();
@@ -627,7 +769,7 @@ const CustomerAuth = () => {
       if (mode === "signin") {
         const json = await authRequest("signin", { email, password });
 
-        // Session limit branch (ported from AdminAuth UI) :contentReference[oaicite:2]{index=2}
+        // Session limit branch (ported from AdminAuth UI)
         if (json?.code === "SESSION_LIMIT_REACHED") {
           const arr = json?.data?.sessions || [];
           setSessions(arr);
@@ -642,6 +784,9 @@ const CustomerAuth = () => {
           setSelectedIds(new Set());
           setMode("SessionLimit");
           setInfo(json?.message || "Maximum active sessions reached.");
+          // pre-fill the re-auth email with the email they just used
+          setReauthEmail(email);
+          setReauthPassword("");
           return;
         }
 
@@ -719,15 +864,6 @@ const CustomerAuth = () => {
         setInfo(json?.message || "Magic sign-in link sent! Check your email.");
         return;
       }
-
-      if (mode === "SessionLimit") {
-        if (!selectedIds.size) {
-          setErrors(["Select at least one session to delete."]);
-          return;
-        }
-        await handleDelete([...selectedIds]);
-        return;
-      }
     } catch (err) {
       setErrors([err.message || "Something went wrong. Please try again."]);
     } finally {
@@ -736,38 +872,38 @@ const CustomerAuth = () => {
   };
 
   // UI config
-  const config  ={
-      signin: {
-        header: "Welcome back",
-        sub: "Sign in to access your dashboard.",
-        primaryCta: "Login in your account",
-      },
-      signup: {
-        header: "Create your account",
-        sub: "We'll email a verification link after you sign up.",
-        primaryCta: "Register an Account",
-      },
-      forgot: {
-        header: "Forgot password",
-        sub: "Enter the email you used. We'll send a reset link.",
-        primaryCta: "Send Password Reset link",
-      },
-      magic: {
-        header: "Email link sign-in",
-        sub: "We'll send you a one-time secure link to sign in.",
-        primaryCta: "Send Magic Login link",
-      },
-      "check-email": {
-        header: "Check your email",
-        sub: "If you don't see it, check spam or try again in a minute.",
-        primaryCta: "Open email app",
-      },
-      SessionLimit: {
-        header: "Maximum sessions reached",
-        sub: "Close one or more sessions to continue logging in.",
-        primaryCta: "Delete selected sessions",
-      },
-    } 
+  const config = {
+    signin: {
+      header: "Welcome back",
+      sub: "Sign in to access your dashboard.",
+      primaryCta: "Login in your account",
+    },
+    signup: {
+      header: "Create your account",
+      sub: "We'll email a verification link after you sign up.",
+      primaryCta: "Register an Account",
+    },
+    forgot: {
+      header: "Forgot password",
+      sub: "Enter the email you used. We'll send a reset link.",
+      primaryCta: "Send Password Reset link",
+    },
+    magic: {
+      header: "Email link sign-in",
+      sub: "We'll send you a one-time secure link to sign in.",
+      primaryCta: "Send Magic Login link",
+    },
+    "check-email": {
+      header: "Check your email",
+      sub: "If you don't see it, check spam or try again in a minute.",
+      primaryCta: "Open email app",
+    },
+    SessionLimit: {
+      header: "Maximum sessions reached",
+      sub: "Close one or more sessions to continue logging in.",
+      primaryCta: "Delete selected sessions",
+    },
+  };
 
   // Check email view
   if (mode === "check-email") {
@@ -814,13 +950,22 @@ const CustomerAuth = () => {
                 </p>
               </div>
 
-              <button
-                type="button"
-                className="w-64 btn btn-md btn-primary mx-auto"
-                onClick={() => alert("Opening email app (demo)")}
-              >
-                {config["check-email"]?.primaryCta}
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="w-full btn btn-md btn-primary-two"
+                  onClick={() => setMode("signin")}
+                >
+                  Go To Login
+                </button>
+                <button
+                  type="button"
+                  className="w-full btn btn-md btn-second"
+                  onClick={() => alert("Opening email app (demo)")}
+                >
+                  {config["check-email"]?.primaryCta}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -828,7 +973,7 @@ const CustomerAuth = () => {
     );
   }
 
-  // SessionLimit view (ported format)  :contentReference[oaicite:3]{index=3}
+  // SessionLimit view (ported format)
   if (mode === "SessionLimit") {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-zinc-50 via-white to-zinc-100 flex items-center justify-center px-4 py-8">
@@ -866,7 +1011,7 @@ const CustomerAuth = () => {
                     type="button"
                     onClick={() => onSubmit()}
                     disabled={loading || selectedIds.size === 0}
-                    className="btn btn-md btn-third"
+                    className="btn btn-md btn-third disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {loading ? (
                       <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -891,6 +1036,19 @@ const CustomerAuth = () => {
             </div>
           </div>
         </div>
+
+        {/* Re-auth modal */}
+        <ReauthModal
+          open={reauthOpen}
+          onClose={() => setReauthOpen(false)}
+          onConfirm={handleConfirmDeletion}
+          email={reauthEmail}
+          setEmail={setReauthEmail}
+          password={reauthPassword}
+          setPassword={setReauthPassword}
+          loading={reauthLoading}
+          errors={reauthErrors}
+        />
       </div>
     );
   }
@@ -962,24 +1120,27 @@ const CustomerAuth = () => {
               )}
 
               {mode === "signup" && (
-                <SignUpInputs
-                  email={email}
-                  setEmail={setEmail}
-                  email2={email2}
-                  setEmail2={setEmail2}
-                  password={password}
-                  setPassword={setPassword}
-                  firstName={firstName}
-                  setFirstName={setFirstName}
-                  lastName={lastName}
-                  setLastName={setLastName}
-                  phoneNo={phoneNo}
-                  setPhoneNo={setPhoneNo}
-                  address={address}
-                  setAddress={setAddress}
-                  country={country}
-                  setCountry={setCountry}
-                />
+                <div className="space-y-5">
+                  <SignUpInputs
+                    email={email}
+                    setEmail={setEmail}
+                    email2={email2}
+                    setEmail2={setEmail2}
+                    password={password}
+                    setPassword={setPassword}
+                    firstName={firstName}
+                    setFirstName={setFirstName}
+                    lastName={lastName}
+                    setLastName={setLastName}
+                    phoneNo={phoneNo}
+                    setPhoneNo={setPhoneNo}
+                    address={address}
+                    setAddress={setAddress}
+                    country={country}
+                    setCountry={setCountry}
+                  />
+                  <TermsCheckbox agree={agree} setAgree={setAgree} />
+                </div>
               )}
 
               {mode === "forgot" && (

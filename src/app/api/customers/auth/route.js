@@ -18,7 +18,6 @@ import CustomerSession from "@/models/CustomerSession"; // make sure this exists
 import AuthSettings from "@/models/AuthSettings";
 import { signCustomerJWT } from "@/lib/jwt"; // make sure this exists
 
-
 /* --------------------------------- utils --------------------------------- */
 
 /** Helpers **/
@@ -438,18 +437,28 @@ export async function POST(request) {
         email: user.email,
         isActive: true,
         startDate: now(),
-        endDate: inDays(7),
+        endDate: inDays(settings?.customer?.sessionDuration ?? 7),
         ip,
         userAgent,
       });
 
       const perms = computeCustomerPermissions(user);
-      const token = signCustomerJWT({
+      const jwtPayload = {
         customerId: user._id,
         email: user.email,
+        roleKey: perms.roleKey,
         jti: tokenId,
         typ: "customer",
-      });
+      };
+
+      if (settings?.customer?.enforceSessionDuration) {
+        let sessionExpireBase = inDays(
+          settings?.customer?.sessionDuration ?? 7
+        );
+        jwtPayload.expiresIn = Math.floor(sessionExpireBase.getTime() / 1000);
+      }
+
+      const token = signCustomerJWT(jwtPayload);
 
       return NextResponse.json({
         success: true,
