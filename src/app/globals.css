@@ -202,14 +202,14 @@ body {
   background: var(--sb-thumb-hover, #a3a3a3);
 }
 
-.goodboy{
+.goodboy {
   position: relative;
   background-repeat: no-repeat;
   background-size: cover;
 }
 
 .goodboy::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;

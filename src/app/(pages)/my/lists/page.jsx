@@ -4,11 +4,11 @@ import Header from "@/components/Header";
 import SidebarWrapper from "@/components/SidebarWrapper";
 import {
   Checkbox,
+  EmptyState,
   getUrlParams,
   inputStyles,
+  LoadingSpinner,
   TabToggle,
-  ToggleLiver,
-  ViewToggle,
 } from "@/presets/styles";
 import useAdminStore from "@/store/useAdminStore";
 import useCustomerStore from "@/store/useCustomerStore";
@@ -18,8 +18,6 @@ import {
   FiTrash2,
   FiSearch,
   FiDownload,
-  FiGrid,
-  FiList,
   FiRefreshCw,
   FiActivity,
   FiCpu,
@@ -28,16 +26,21 @@ import {
   FiChevronUp,
   FiEdit,
   FiCopy,
+  FiEye,
 } from "react-icons/fi";
 import { ImSpinner5 } from "react-icons/im";
 import ListModal from "./ListModal";
 import { Dropdown } from "@/components/Dropdown";
 import ConfirmationModal from "@/components/ConfirmationModal";
+import {
+  fetchWithAuthAdmin,
+  fetchWithAuthCustomer,
+} from "@/helpers/front-end/request";
 
 // Custom Table Components
 const Table = ({ children, className = "" }) => (
   <div
-    className={`bg-white border border-zinc-200 rounded overflow-x-hidden overflow-y-scroll ${className}`}
+    className={`w-full min-h-96 bg-white border border-zinc-200 rounded overflow-x-hidden overflow-y-scroll ${className}`}
   >
     {children}
   </div>
@@ -181,9 +184,10 @@ const FilterResultsBox = ({
 
 const Lists = () => {
   const { showSuccess, showError } = useToastStore();
-  const { admin } = useAdminStore();
-  const { customer } = useCustomerStore();
+  const { admin, token: adminToken } = useAdminStore();
+  const { customer, token: customerToken } = useCustomerStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState("create"); // "create", "edit", "view"
   const [lists, setLists] = useState([]);
   const [allLists, setAllLists] = useState([]);
   const [automations, setAutomations] = useState([]);
@@ -203,7 +207,6 @@ const Lists = () => {
   });
 
   // Toolbar state
-  const [viewMode, setViewMode] = useState("single");
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedLists, setSelectedLists] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
@@ -228,24 +231,53 @@ const Lists = () => {
   const selectedAutomation = automations?.find(
     (l) => l._id === formData.automationId
   );
-  const isEditing = !!editingMiniId;
+  const isEditing = modalMode === "edit";
+  const isViewing = modalMode === "view";
 
   // API Functions
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
-      const [listsRes, automationsRes] = await Promise.all([
-        fetch("/api/list"),
-        fetch("/api/automation"),
-      ]);
-
-      if (!listsRes.ok || !automationsRes.ok) {
+      let listsRes;
+      let automationsRes;
+      if (customer && customer._id && customerToken) {
+        [listsRes, automationsRes] = await Promise.all([
+          fetchWithAuthCustomer({
+            url: "/api/list",
+            method: "GET",
+            customer: customer,
+            token: customerToken,
+          }),
+          fetchWithAuthCustomer({
+            url: "/api/automation",
+            method: "GET",
+            customer: customer,
+            token: customerToken,
+          }),
+        ]);
+      } else if (admin && admin._id && adminToken) {
+        [listsRes, automationsRes] = await Promise.all([
+          fetchWithAuthAdmin({
+            url: "/api/list",
+            method: "GET",
+            admin: admin,
+            token: adminToken,
+          }),
+          fetchWithAuthAdmin({
+            url: "/api/automation",
+            method: "GET",
+            admin: admin,
+            token: adminToken,
+          }),
+        ]);
+      }
+      if (!listsRes.success || !automationsRes.success) {
         throw new Error("Failed to fetch data from one or more endpoints.");
       }
 
       const [listsData, automationsData] = await Promise.all([
-        listsRes.json(),
-        automationsRes.json(),
+        listsRes,
+        automationsRes,
       ]);
 
       const allListsData = listsData.data || [];
@@ -380,6 +412,7 @@ const Lists = () => {
         });
         setIsModalOpen(false);
         setEditingMiniId(null);
+        setModalMode("create");
         showSuccess(
           isEditing
             ? "List updated successfully!"
@@ -427,6 +460,7 @@ const Lists = () => {
   // Event Handlers
   const handleOpenModal = useCallback(() => {
     setIsModalOpen(true);
+    setModalMode("create");
     setEditingMiniId(null);
     setFormData({
       name: "",
@@ -439,6 +473,20 @@ const Lists = () => {
 
   const handleEdit = useCallback((list) => {
     setEditingMiniId(list._id);
+    setModalMode("edit");
+    setFormData({
+      name: list.name,
+      description: list.description,
+      isActive: list.isActive,
+      logo: list.logo,
+      automationId: list.automationId || "",
+    });
+    setIsModalOpen(true);
+  }, []);
+
+  const handleView = useCallback((list) => {
+    setEditingMiniId(list._id);
+    setModalMode("view");
     setFormData({
       name: list.name,
       description: list.description,
@@ -595,7 +643,6 @@ const Lists = () => {
         onButtonClick={handleOpenModal}
         subtitle="Manage your automations and work flows"
       />
-
       {/* Primary actions + search/filters */}
       <div className="bg-white border border-zinc-200 rounded p-3 mb-3">
         <div className="flex flex-col md:flex-row gap-3 md:items-center">
@@ -751,7 +798,6 @@ const Lists = () => {
           </div>
         </div>
       </div>
-
       {/* Bulk actions bar */}
       {selectedLists.length > 0 && (
         <div
@@ -795,16 +841,13 @@ const Lists = () => {
           </button>
         </div>
       )}
-
       {/* Lists Table */}
       {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <ImSpinner5 className="w-12 h-12 animate-spin text-purple-500" />
-        </div>
+        <LoadingSpinner />
       ) : filteredLists.length > 0 ? (
         <Table>
           <TableHeader>
-            <div className="grid grid-cols-[50px_1fr_100px_120px_100px_120px_120px] items-center">
+            <div className="grid grid-cols-[50px_3fr_120px_120px_120px_120px_120px] items-center">
               <TableCell className="p-3">
                 <Checkbox selected={selectAll} onChange={handleSelectAll} />
               </TableCell>
@@ -865,7 +908,7 @@ const Lists = () => {
 
               return (
                 <TableRow key={list._id} isSelected={isSelected}>
-                  <div className="grid grid-cols-[50px_1fr_100px_120px_100px_120px_120px] items-center">
+                  <div className="grid grid-cols-[50px_1fr_100px_120px_100px_120px_140px] items-center">
                     <TableCell>
                       <Checkbox
                         selected={isSelected}
@@ -890,7 +933,10 @@ const Lists = () => {
                           )}
                         </div>
                         <div>
-                          <div className="font-medium text-zinc-800">
+                          <div
+                            className="font-medium text-zinc-800 hover:underline cursor-pointer"
+                            onClick={() => handleView(list)}
+                          >
                             {list.name}
                           </div>
                         </div>
@@ -933,6 +979,15 @@ const Lists = () => {
                         position="left"
                         options={[
                           {
+                            value: "view",
+                            label: (
+                              <div className="flex items-center gap-2 w-full">
+                                <FiEye />
+                                View Details
+                              </div>
+                            ),
+                          },
+                          {
                             value: "edit",
                             label: (
                               <div className="flex items-center gap-2 w-full">
@@ -962,6 +1017,7 @@ const Lists = () => {
                         ]}
                         placeholder="List Actions"
                         onChange={(val) => {
+                          if (val === "view") handleView(list);
                           if (val === "edit") handleEdit(list);
                           if (val === "delete") handleDeleteClick(list);
                           if (val === "copy")
@@ -976,18 +1032,18 @@ const Lists = () => {
           </TableBody>
         </Table>
       ) : (
-        <div className="text-center p-10 text-zinc-500">
-          <h3 className="text-2xl font-semibold">No Lists Found</h3>
-          <p className="mt-2">Click "Create New List" to get started.</p>
-        </div>
+        <EmptyState
+          title="0 Lists Found"
+          description={`No List Found. Kindly get started by Clicking "Create List Button" to add an List`}
+        />
       )}
-
       {/* List Modal */}
       <ListModal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
           setEditingMiniId(null);
+          setModalMode("create");
           setFormData({
             name: "",
             description: "",
@@ -997,6 +1053,7 @@ const Lists = () => {
           });
         }}
         isEditing={isEditing}
+        isViewing={isViewing}
         formData={formData}
         handleInputChange={handleInputChange}
         handleSubmit={handleSubmit}
@@ -1006,7 +1063,6 @@ const Lists = () => {
         handleAutomationConfirm={handleAutomationConfirm}
         isCustomer={!!customer}
       />
-
       {/* Confirmation Modals */}
       <ConfirmationModal
         isOpen={showDeleteConfirm}

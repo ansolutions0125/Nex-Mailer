@@ -158,3 +158,136 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
   inFlight.set(key, { promise, startedAt: now });
   return promise;
 };
+
+export const fetchWithAuthCustomer = async (req, opts = {}) => {
+  const {
+    url,
+    customer,
+    token,
+    method = "GET",
+    payload = null,
+    setAdmin,
+  } = req;
+
+  const {
+    cacheTtlMs,
+    dedupeWindowMs,
+    retries,
+    retryBaseMs,
+    retryFactor,
+    abortOnTimeoutMs,
+  } = { ...defaultOptions, ...opts };
+
+  if (!url) throw new Error("fetchWithAuthAdmin: url is required");
+
+  // Build request key
+  const key = makeKey({ url, method, token, payload });
+  const now = Date.now();
+
+  // 1) Serve from tiny memory cache (burst suppression)
+  const cached = memoryCache.get(key);
+  if (cached && cached.expiry > now) {
+    return cached.data;
+  }
+
+  // 2) Share in-flight identical requests
+  const inflightEntry = inFlight.get(key);
+  if (inflightEntry) {
+    // If another identical request started very recently, just share it
+    if (now - inflightEntry.startedAt <= dedupeWindowMs) {
+      return inflightEntry.promise;
+    }
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(customer && token && { "mailer-auth-token": token })
+  };
+
+  const controller = abortOnTimeoutMs ? new AbortController() : null;
+  const timeoutId = abortOnTimeoutMs
+    ? setTimeout(() => controller.abort(), abortOnTimeoutMs)
+    : null;
+
+  const doFetch = async () => {
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      try {
+        const fetchOptions = {
+          method,
+          headers,
+          signal: controller?.signal,
+        };
+        if (payload) fetchOptions.body = JSON.stringify(payload);
+
+        const response = await fetch(url, fetchOptions);
+
+        // Retry on transient statuses
+        if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+          if (attempt < retries) {
+            const backoff = retryBaseMs * Math.pow(retryFactor, attempt);
+            attempt++;
+            await delay(backoff);
+            continue;
+          }
+        }
+
+        // Parse JSON safely
+        let json;
+        const text = await response.text();
+        try { json = text ? JSON.parse(text) : null; }
+        catch { json = { raw: text }; }
+
+        // Optionally throw on non-OK if you want
+        // if (!response.ok) {
+        //   const err = new Error(`HTTP ${response.status}`);
+        //   err.response = json;
+        //   throw err;
+        // }
+
+        // Special customer update handling
+        if (url.includes("/api/customer") && method === "PUT" && json) {
+          if (!customer || customer._id === json?.data?._id) {
+            setAdmin?.(json?.data);
+          }
+        }
+
+        return json;
+      } catch (err) {
+        // Abort errors or network issues
+        const isAbort = err?.name === "AbortError";
+        if (isAbort) throw err;
+
+        // Retry network errors
+        if (attempt < retries) {
+          const backoff = retryBaseMs * Math.pow(retryFactor, attempt);
+          attempt++;
+          await delay(backoff);
+          continue;
+        }
+        throw err;
+      }
+    }
+  };
+
+  const promise = doFetch()
+    .then((data) => {
+      // put in tiny cache to collapse immediate duplicates
+      if (cacheTtlMs > 0) {
+        memoryCache.set(key, {
+          data,
+          expiry: Date.now() + cacheTtlMs,
+          resolvedAt: Date.now(),
+        });
+      }
+      return data;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+      if (timeoutId) clearTimeout(timeoutId);
+    });
+
+  inFlight.set(key, { promise, startedAt: now });
+  return promise;
+};

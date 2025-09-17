@@ -184,18 +184,7 @@ function _throw(statusCode, message) {
   err.statusCode = statusCode;
   throw err;
 }
-
-/**
- * Unified request auth that supports **both** admin and customer tokens.
- * It:
- *  1) reads "mailer-auth-token" from headers,
- *  2) decodes the JWT,
- *  3) routes to the correct validator (adminReqWithAuth or customerReqWithAuth),
- *  4) returns a single, normalized object you can branch on.
- *
- * @param {Headers} headers
- * @returns {Promise<AnyAuth>}
- */
+ 
 export async function anyReqWithAuth(headers) {
   const token = headers.get("mailer-auth-token");
   if (!token) _throw(401, "No auth token provided");
@@ -252,4 +241,36 @@ export async function anyReqWithAuth(headers) {
   }
 
   _throw(401, "Unrecognized token type");
+}
+
+
+export async function validateAccessBothAdminCustomer(request) {
+  // Authenticate user
+  const authData = await anyReqWithAuth(request.headers);
+
+  // Validate user exists
+  if (!authData?.customer?._id && !authData?.admin?._id) {
+    throw {
+      statusCode: 401,
+      message: "Unauthorized"
+    };
+  }
+
+  // Check admin permissions if admin user
+  if (authData.admin?._id) {
+    try {
+      // First try owner check
+      requireOwner(authData);
+    } catch (error) {
+      try {
+        // Then try customer.view permission
+        requirePermission(authData, "customer.view");
+      } catch {
+        // Finally try customer.manage permission
+        requirePermission(authData, "customer.manage");
+      }
+    }
+  }
+
+  return authData;
 }

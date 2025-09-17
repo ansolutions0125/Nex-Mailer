@@ -44,13 +44,15 @@ export const LoadingSpinner = ({ type = "compo" }) => (
       type === "page" ? "h-screen goodboy" : "h-64"
     } center-flex flex-col gap-2`}
   >
-    <h1
-      className={` ${
-        type === "page" ? "text-xl lg:text-3xl" : "text-sm xl:text-base"
-      } font-medium text-zinc-600 animate-pulse`}
-    >
-      Processing!
-    </h1>
+    {type === "page" && (
+      <h1
+        className={` ${
+          type === "page" ? "text-xl lg:text-3xl" : "text-sm xl:text-base"
+        } font-medium text-zinc-600 animate-pulse`}
+      >
+        Processing!
+      </h1>
+    )}
     <div
       className={`${
         type === "page" && "mb-80 md:mb-32"
@@ -87,8 +89,10 @@ export const LoadingSpinner = ({ type = "compo" }) => (
 
     {type === "page" && (
       <div className="mt-8 text-center flex flex-col items-center">
-        <p className="text-zinc-600 mb-2">If the page is taking too long to load</p>
-        <button 
+        <p className="text-zinc-600 mb-2">
+          If the page is taking too long to load
+        </p>
+        <button
           onClick={() => window.location.reload()}
           className="btn btn-sm btn-primary-two"
         >
@@ -96,6 +100,17 @@ export const LoadingSpinner = ({ type = "compo" }) => (
         </button>
       </div>
     )}
+  </div>
+);
+
+export const EmptyState = ({
+  title = "Not Found",
+  description = 'Click "Do Click Button" to get started.',
+}) => (
+  <div className="center-flex flex-col text-center p-10 text-zinc-500">
+    <img src="/bg-images/empty-state.jpg" alt="Empty-State" className="h-40" />
+    <h3 className="text-xl lg:text-2xl font-semibold -mt-6">{title}</h3>
+    <p className="mt-2 max-w-96 text-xs md:text-sm">{description}</p>
   </div>
 );
 
