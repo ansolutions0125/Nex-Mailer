@@ -2,9 +2,8 @@
 
 import dbConnect from "@/config/mongoConfig";
 import List from "@/models/List";
-import Website from "@/models/Website"; // Add Website model import
 import { NextResponse } from "next/server";
-import mongoose from "mongoose";
+import Customer from "@/models/Customer";
 
 export async function GET(request) {
   await dbConnect();
@@ -12,7 +11,6 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("listId");
-    const websiteId = searchParams.get("websiteId");
     const notConnected = searchParams.get("notConnected");
 
     let lists;
@@ -24,23 +22,6 @@ export async function GET(request) {
           { status: 404 }
         );
       }
-    } else if (websiteId) {
-      if (!mongoose.Types.ObjectId.isValid(websiteId)) {
-        return NextResponse.json(
-          { success: false, message: "Invalid website ID format." },
-          { status: 400 }
-        );
-      }
-
-      lists = await List.find({ websiteId: websiteId });
-
-      if (!lists || lists.length === 0) {
-        return NextResponse.json(
-          { success: true, data: [], message: "No lists found for this website." },
-          { status: 200 }
-        );
-      }
-
     } else {
       if (notConnected === "true") {
         lists = await List.find({ automationId: null });
@@ -64,21 +45,17 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { websiteId, automationId } = body;
+    const { automationId, customerId } = body;
 
     // Normalize automationId: convert empty string to null
     if (automationId === "") {
       body.automationId = null;
     }
 
-    if (websiteId === "") {
-      body.websiteId = null;
-    }
-
     let newList = await List.create(body);
 
-    if (websiteId) {
-      await Website.findByIdAndUpdate(websiteId, {
+    if (customerId) {
+      await Customer.findByIdAndUpdate(customerId, {
         $inc: { "stats.totalLists": 1 },
         $push: { lists: newList._id },
       });
@@ -153,14 +130,39 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const listId = searchParams.get("id");
-
+    
+    // Handle bulk delete if request has body
     if (!listId) {
+      const body = await request.json();
+      const { listIds } = body;
+
+      if (!listIds || !Array.isArray(listIds) || listIds.length === 0) {
+        return NextResponse.json(
+          { success: false, message: "listIds array is required for bulk delete." },
+          { status: 400 }
+        );
+      }
+
+      const deletedLists = await List.find({ _id: { $in: listIds } });
+      await List.deleteMany({ _id: { $in: listIds } });
+
+      // Update customer stats for all deleted lists
+      for (const list of deletedLists) {
+        if (list.customerId) {
+          await Customer.findByIdAndUpdate(list.customerId, {
+            $inc: { "stats.totalLists": -1 },
+            $pull: { lists: list._id },
+          });
+        }
+      }
+
       return NextResponse.json(
-        { success: false, message: "listId is required to delete a list." },
-        { status: 400 }
+        { success: true, message: `${deletedLists.length} lists deleted successfully.` },
+        { status: 200 }
       );
     }
 
+    // Handle single delete
     const deletedList = await List.findByIdAndDelete(listId);
 
     if (!deletedList) {
@@ -169,12 +171,12 @@ export async function DELETE(request) {
         { status: 404 }
       );
     }
-
-    // Update website stats and remove list reference
-    await Website.findByIdAndUpdate(deletedList.websiteId, {
-      $inc: { "stats.totalLists": -1 },
-      $pull: { lists: deletedList._id },
-    });
+    if (deletedList.customerId) {
+      await Customer.findByIdAndUpdate(deletedList.customerId, {
+        $inc: { "stats.totalLists": -1 },
+        $pull: { lists: deletedList._id },
+      });
+    }
 
     return NextResponse.json(
       { success: true, message: "List deleted successfully." },

@@ -13,22 +13,12 @@ const ListModal = ({
   handleInputChange,
   handleSubmit,
   modalLoading,
-  websites,
   automations,
-  selectedWebsite,
   selectedAutomation,
-  handleWebsiteConfirm,
   handleAutomationConfirm,
   isCustomer = false,
 }) => {
-  const [isWebsiteModalOpen, setIsWebsiteModalOpen] = useState(false);
   const [isAutomationModalOpen, setIsAutomationModalOpen] = useState(false);
-
-  // Handle website selection with proper event handling
-  const handleWebsiteSelect = (selection) => {
-    handleWebsiteConfirm(selection);
-    setIsWebsiteModalOpen(false);
-  };
 
   // Handle automation selection with proper event handling
   const handleAutomationSelect = (selection) => {
@@ -45,11 +35,10 @@ const ListModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 "
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
-      <div className="p-3">
-        <div
+      <div
         className="bg-white p-6 rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto"
         onClick={stopPropagation} // Stop propagation here too
       >
@@ -84,7 +73,7 @@ const ListModal = ({
               <div className="space-y-4">
                 <div>
                   <div className="mb-4">
-                    <label className={labelStyles("base")}>Name</label>
+                    <label className={labelStyles("base")}>List Name</label>
                     <input
                       type="text"
                       name="name"
@@ -162,37 +151,7 @@ const ListModal = ({
                 </div>
               </div>
 
-              {/* Right Column - Website & Automation Selection */}
               <div className="grid grid-cols-1 gap-3">
-                {!isCustomer && (
-                  <div>
-                    <p className="text-primary text-xs mb-2 bg-zinc-100 border rounded-sm py-1.5 px-2.5">
-                      Choose which website this list belongs to.
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsWebsiteModalOpen(true)}
-                      className="btn btn-sm btn-primary center-flex gap-2 mb-4"
-                    >
-                      Select a Website
-                    </button>
-
-                    {selectedWebsite && (
-                      <div className="mt-2 bg-white border border-zinc-200 rounded p-3">
-                        <p className="text-sm text-zinc-800 mb-2">
-                          Currently Selected:
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="bg-zinc-100 text-zinc-700 px-3 py-1.5 text-sm rounded-md border">
-                            {selectedWebsite.name}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 <div>
                   <p className="text-primary text-xs mb-2 bg-zinc-100 border rounded-sm py-1.5 px-2.5">
                     Choose an automation for this list.
@@ -253,26 +212,6 @@ const ListModal = ({
           </form>
         )}
       </div>
-      </div>
-
-      {/* Website Selection Modal - Render outside the main modal content */}
-      {isWebsiteModalOpen && (
-        <div
-          className="fixed inset-0 z-60 flex items-center justify-center"
-          onClick={() => setIsWebsiteModalOpen(false)}
-        >
-          <div onClick={stopPropagation}>
-            <SelectModal
-              thresholdLimit={1}
-              onCancel={() => setIsWebsiteModalOpen(false)}
-              onConfirm={handleWebsiteSelect}
-              title="Select Website"
-              items={websites}
-              selectedItems={formData.websiteId ? [formData.websiteId] : []}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Automation Selection Modal - Render outside the main modal content */}
       {isAutomationModalOpen && (

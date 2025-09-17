@@ -55,7 +55,6 @@ const CustomerSchema = new Schema(
       sparse: true,
     },
     isActive: { type: Boolean, default: true },
-
     // ---- Profile & Auth ----
     email: {
       type: String,
@@ -79,8 +78,9 @@ const CustomerSchema = new Schema(
     // ---- Quota + Stats ----
     emailLimits: { type: EmailLimitsSchema, default: () => ({}) },
     stats: { type: CustomerStatsSchema, default: () => ({}) },
-
+    
     // ---- Optional associations (owner) ----
+    lists: [{ type: Schema.Types.ObjectId, ref: "List" }],
     websites: [{ type: Schema.Types.ObjectId, ref: "Website", index: true }],
     templates: [{ type: Schema.Types.ObjectId, ref: "Template" }],
     servers: [{ type: Schema.Types.ObjectId, ref: "Server" }],

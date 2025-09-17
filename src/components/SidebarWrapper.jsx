@@ -129,7 +129,6 @@ const createNavigationItems = (customer, admin) => {
 
   // Items only visible to admins
   const adminItems = [
-    { icon: <Globe />, text: "Websites", href: "/websites", order: 2 },
     {
       icon: <Network />,
       text: "Infrastructure",

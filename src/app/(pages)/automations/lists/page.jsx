@@ -12,14 +12,10 @@ import useAdminStore from "@/store/useAdminStore";
 import useCustomerStore from "@/store/useCustomerStore";
 import { useToastStore } from "@/store/useToastStore";
 import { motion } from "framer-motion";
-import { EthernetPortIcon } from "lucide-react";
 import {
-  FiEdit,
   FiTrash2,
-  FiCopy,
   FiSearch,
   FiDownload,
-  FiFilter,
   FiGrid,
   FiList,
   FiRefreshCw,
@@ -27,7 +23,6 @@ import {
   FiActivity,
   FiCpu,
   FiUsers,
-  FiX,
 } from "react-icons/fi";
 import { ImSpinner5 } from "react-icons/im";
 import ListModal from "./ListModal";
@@ -164,10 +159,6 @@ const Lists = () => {
   const [selectAll, setSelectAll] = useState(false);
   const [searchMode, setSearchMode] = useState("local");
   const [query, setQuery] = useState("");
-  const [statusTab, setStatusTab] = useState("all");
-  const [sortKey, setSortKey] = useState("lastActiveAt");
-  const [sortDir, setSortDir] = useState("desc");
-  const [groupByHolder, setGroupByHolder] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -267,7 +258,10 @@ const Lists = () => {
       const method = isEditing ? "PUT" : "POST";
       const url = `/api/list${isEditing ? `?id=${editingMiniId}` : ""}`;
 
-      const payloadData = { ...formData };
+      const payloadData = {
+        ...formData,
+        customerId: customer?._id || null,
+      };
       delete payloadData.listId;
 
       try {
@@ -748,6 +742,7 @@ const Lists = () => {
         selectedAutomation={selectedAutomation}
         handleWebsiteConfirm={handleWebsiteConfirm}
         handleAutomationConfirm={handleAutomationConfirm}
+        isCustomer={!!customer} 
       />
     </SidebarWrapper>
   );
