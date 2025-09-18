@@ -299,6 +299,25 @@ const useDropdownState = (sideItems, pathname) => {
   }, [sideItems, pathname]);
 };
 
+// Hook for click outside functionality
+const useClickOutside = (ref, callback) => {
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        callback();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [ref, callback]);
+};
+
 // Components
 const IconTile = memo(
   ({ svg, size = "md", hovered = false, active = false }) => {
@@ -478,7 +497,7 @@ const Flyout = memo(
 Flyout.displayName = "Flyout";
 
 const UserAvatar = memo(({ user, size = "sm" }) => {
-  const sizeClasses = size === "lg" ? "w-12 h-12 text-lg" : "w-7 h-7";
+  const sizeClasses = size === "lg" ? "w-12 h-12 text-lg" : "w-6 h-6";
 
   return (
     <div
@@ -530,10 +549,15 @@ const SidebarWrapper = ({ children }) => {
   const [flyoutIndex, setFlyoutIndex] = useState(null);
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const [flyoutPos, setFlyoutPos] = useState({ top: 0, left: 0 });
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
   // Refs
   const closeTimer = useRef(0);
   const itemRefs = useRef([]);
+  const userDropdownRef = useRef(null);
+
+  // Click outside hook for user dropdown
+  useClickOutside(userDropdownRef, () => setIsUserDropdownOpen(false));
 
   // Memoized values
   const sideItems = useMemo(
@@ -570,6 +594,7 @@ const SidebarWrapper = ({ children }) => {
       setIsMobileOpen(false);
       setHoveredIndex(null);
       setFlyoutIndex(null);
+      setIsUserDropdownOpen(false); // Close user dropdown on navigation
     },
     [router]
   );
@@ -639,6 +664,10 @@ const SidebarWrapper = ({ children }) => {
     resetAdmin();
     router.push(customer ? "/auth" : "/admin/auth");
   }, [resetCustomer, resetAdmin, router, customer]);
+
+  const toggleUserDropdown = useCallback(() => {
+    setIsUserDropdownOpen((prev) => !prev);
+  }, []);
 
   // Effects
   useEffect(() => {
@@ -854,7 +883,7 @@ const SidebarWrapper = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 h-full overflow-hidden space-y-2 flex flex-col px-2">
         {/* Top Bar */}
-        <div className="bg-primary px-3 md:px-6 py-3 sticky top-0 z-20 rounded-b-xl text-white">
+        <div className="bg-primary px-3 md:px-6 py-2 sticky top-0 z-20 rounded-b-xl text-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
@@ -899,8 +928,16 @@ const SidebarWrapper = ({ children }) => {
             </div>
 
             {/* User Menu */}
-            <div className="flex items-center gap-3 relative group">
-              <div className="flex items-center gap-2 text-sm">
+            <div
+              className="flex items-center gap-3 relative"
+              ref={userDropdownRef}
+            >
+              <button
+                onClick={toggleUserDropdown}
+                className={`flex items-center gap-2 text-sm rounded-sm p-2 transition-colors ${
+                  isUserDropdownOpen ? "bg-white/10" : "hover:bg-white/10"
+                }`}
+              >
                 <UserAvatar user={currentUser} size="sm" />
                 <div className="flex items-center gap-1">
                   <div className="min-w-0">
@@ -908,25 +945,31 @@ const SidebarWrapper = ({ children }) => {
                       {getFullName(currentUser)}
                     </div>
                   </div>
-                  <LuChevronDown className="w-4 h-4" />
+                  <LuChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      isUserDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
                 </div>
-              </div>
+              </button>
 
               {/* User Dropdown */}
               <div
                 role="menu"
                 aria-label="Account menu"
-                className="
+                className={`
                   absolute -right-2 md:-right-5 top-full mt-2 z-50
-                  w-[620px] max-w-[94vw]
+                  w-[580px] max-w-[94vw]
                   bg-primary settings-pattern
-                  rounded-b-lg
-                  opacity-0 scale-95 translate-y-1 invisible
+                  rounded-lg border-t-2 border-zinc-300
                   transition-all duration-200 origin-top-right
-                  group-hover:opacity-100 group-hover:scale-100 group-hover:translate-y-0 group-hover:visible
-                  focus-within:opacity-100 focus-within:scale-100 focus-within:translate-y-0 focus-within:visible
                   overflow-hidden
-                "
+                  ${
+                    isUserDropdownOpen
+                      ? "opacity-100 scale-100 translate-y-0 visible"
+                      : "opacity-0 scale-95 translate-y-1 invisible"
+                  }
+                `}
               >
                 <div className="flex">
                   {/* Left panel: User Identity */}
@@ -961,23 +1004,21 @@ const SidebarWrapper = ({ children }) => {
                         <button
                           key={item.label}
                           onClick={() => handleNavigation(item.href)}
-                          className="w-full btn btn-sm flex items-center gap-1 text-primary border hover:border-zinc-300 bg-zinc-100 hover:bg-white/80 rounded mb-1"
+                          className="w-full btn btn-sm flex items-center gap-2 text-white hover:bg-white/30 rounded mb-1"
                         >
-                          <div className="text-primary w-4 h-4 center-flex">
-                            {item.icon}
-                          </div>
+                          <div className="w-4 h-4 center-flex">{item.icon}</div>
                           {item.label}
                         </button>
                       ))}
 
-                      <div className="my-2 h-px bg-zinc-200" />
+                      <div className="my-1 mb-2 h-px bg-white/50" />
 
                       <button
                         onClick={logout}
                         className="btn btn-sm flex items-center gap-1 text-red-500 border border-red-200 hover:border-red-300 bg-red-100 hover:bg-red-200 rounded"
                       >
-                        <div className="text-red-600 w-5 h-5 flex items-center justify-center">
-                          <LogOut className="w-5 h-5" />
+                        <div className="text-red-600 center-flex">
+                          <LogOut className="w-4 h-4" />
                         </div>
                         Logout
                       </button>

@@ -40,7 +40,7 @@ import {
 // Custom Table Components
 const Table = ({ children, className = "" }) => (
   <div
-    className={`w-full min-h-96 bg-white border border-zinc-200 rounded overflow-x-hidden overflow-y-scroll ${className}`}
+    className={`w-full min-h-96 bg-white border border-zinc-200 rounded overflow-auto ${className}`}
   >
     {children}
   </div>
@@ -61,7 +61,7 @@ const TableRow = ({
   onClick,
 }) => (
   <div
-    className={`border-b border-zinc-100 hover:bg-zinc-50 transition-colors ${
+    className={`border-b border-zinc-100 transition-all ${
       isSelected ? "bg-blue-50" : ""
     } ${className}`}
     onClick={onClick}
@@ -239,63 +239,39 @@ const Lists = () => {
     setLoading(true);
     try {
       let listsRes;
-      let automationsRes;
       if (customer && customer._id && customerToken) {
-        [listsRes, automationsRes] = await Promise.all([
-          fetchWithAuthCustomer({
-            url: "/api/list",
-            method: "GET",
-            customer: customer,
-            token: customerToken,
-          }),
-          fetchWithAuthCustomer({
-            url: "/api/automation",
-            method: "GET",
-            customer: customer,
-            token: customerToken,
-          }),
-        ]);
+        listsRes = await fetchWithAuthCustomer({
+          url: "/api/list",
+          method: "GET",
+          customer,
+          token: customerToken,
+        });
       } else if (admin && admin._id && adminToken) {
-        [listsRes, automationsRes] = await Promise.all([
-          fetchWithAuthAdmin({
-            url: "/api/list",
-            method: "GET",
-            admin: admin,
-            token: adminToken,
-          }),
-          fetchWithAuthAdmin({
-            url: "/api/automation",
-            method: "GET",
-            admin: admin,
-            token: adminToken,
-          }),
-        ]);
+        listsRes = await fetchWithAuthAdmin({
+          url: "/api/list",
+          method: "GET",
+          admin,
+          token: adminToken,
+        });
       }
-      if (!listsRes.success || !automationsRes.success) {
-        throw new Error("Failed to fetch data from one or more endpoints.");
+      if (!listsRes.success) {
+        throw new Error("Failed to fetch lists.");
       }
 
-      const [listsData, automationsData] = await Promise.all([
-        listsRes,
-        automationsRes,
-      ]);
-
-      const allListsData = listsData.data || [];
-      const allAutomationsData = automationsData.data || [];
+      const allListsData = listsRes.data || [];
 
       // Store all lists
       setAllLists(allListsData);
-      setAutomations(allAutomationsData);
+      // automations now come from lists directly (via populated automationId)
+      setAutomations([]);
 
       // Check if we have a customerId parameter
       if (urlParams.customerId) {
-        // Filter lists to only show those associated with this customer
         const filteredLists = allListsData.filter(
           (list) => list.customerId === urlParams.customerId
         );
         setLists(filteredLists);
       } else {
-        // No customerId parameter, show all data
         setLists(allListsData);
       }
     } catch (error) {
@@ -315,22 +291,32 @@ const Lists = () => {
 
     setBulkDeleting(true);
     try {
-      const response = await fetch("/api/list", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ listIds: selectedLists }),
-      });
+      let response;
+      if (customer && customer._id && customerToken) {
+        response = await fetchWithAuthCustomer({
+          url: "/api/list",
+          method: "DELETE",
+          payload: { listIds: selectedLists },
+          customer,
+          token: customerToken,
+        });
+      } else if (admin && admin._id && adminToken) {
+        response = await fetchWithAuthAdmin({
+          url: "/api/list",
+          method: "DELETE",
+          payload: { listIds: selectedLists },
+          admin,
+          token: adminToken,
+        });
+      }
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to delete lists.");
+      if (!response.success) {
+        throw new Error(response.message || "Failed to delete lists.");
       }
 
       showSuccess(
-        result.message || `${selectedLists.length} lists deleted successfully!`
+        response.message ||
+          `${selectedLists.length} lists deleted successfully!`
       );
       setSelectedLists([]);
       setSelectAll(false);
@@ -441,13 +427,27 @@ const Lists = () => {
     if (!listToDelete) return;
 
     try {
-      const response = await fetch(`/api/list?id=${listToDelete._id}`, {
-        method: "DELETE",
-      });
+      let response;
+      if (customer && customer._id && customerToken) {
+        response = await fetchWithAuthCustomer({
+          url: `/api/list?id=${listToDelete._id}`,
+          method: "DELETE",
+          customer,
+          token: customerToken,
+        });
+      } else if (admin && admin._id && adminToken) {
+        response = await fetchWithAuthAdmin({
+          url: `/api/list?id=${listToDelete._id}`,
+          method: "DELETE",
+          admin,
+          token: adminToken,
+        });
+      }
 
-      if (!response.ok) throw new Error("Failed to delete list.");
+      if (!response.success)
+        throw new Error(response.message || "Failed to delete list.");
 
-      showSuccess("List deleted successfully!");
+      showSuccess(response.message || "List deleted successfully!");
       setShowDeleteConfirm(false);
       setListToDelete(null);
       await fetchAllData();
@@ -458,18 +458,49 @@ const Lists = () => {
   }, [listToDelete, fetchAllData, showSuccess, showError]);
 
   // Event Handlers
-  const handleOpenModal = useCallback(() => {
+  const handleOpenModal = useCallback(async () => {
     setIsModalOpen(true);
     setModalMode("create");
     setEditingMiniId(null);
     setFormData({
       name: "",
-      description: "",
+      description: "", 
       isActive: true,
       logo: "",
       automationId: "",
     });
-  }, []);
+    
+    setModalLoading(true);
+    try {
+      let response;
+      if (customer && customer._id && customerToken) {
+        response = await fetchWithAuthCustomer({
+          url: "/api/work-flow/flow",
+          method: "GET", 
+          customer,
+          token: customerToken
+        });
+      } else if (admin && admin._id && adminToken) {
+        response = await fetchWithAuthAdmin({
+          url: "/api/work-flow/flow",
+          method: "GET",
+          admin,
+          token: adminToken
+        });
+      }
+
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch automations");
+      }
+
+      setAutomations(response.data.automations || []);
+    } catch (error) {
+      console.error("Error fetching automations:", error);
+      showError(error.message || "Failed to fetch automations");
+    } finally {
+      setModalLoading(false);
+    }
+  }, [customer, customerToken, admin, adminToken, showError]);
 
   const handleEdit = useCallback((list) => {
     setEditingMiniId(list._id);
@@ -847,7 +878,7 @@ const Lists = () => {
       ) : filteredLists.length > 0 ? (
         <Table>
           <TableHeader>
-            <div className="grid grid-cols-[50px_3fr_120px_120px_120px_120px_120px] items-center">
+            <div className="grid grid-cols-[50px_1fr_120px_140px_120px_120px_140px] items-center">
               <TableCell className="p-3">
                 <Checkbox selected={selectAll} onChange={handleSelectAll} />
               </TableCell>
@@ -908,7 +939,7 @@ const Lists = () => {
 
               return (
                 <TableRow key={list._id} isSelected={isSelected}>
-                  <div className="grid grid-cols-[50px_1fr_100px_120px_100px_120px_140px] items-center">
+                  <div className="grid grid-cols-[50px_1fr_120px_140px_120px_120px_140px] items-center">
                     <TableCell>
                       <Checkbox
                         selected={isSelected}
@@ -917,7 +948,7 @@ const Lists = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-zinc-100 rounded border overflow-hidden">
+                        <div className="w-20 h-20 bg-zinc-100 rounded border overflow-hidden">
                           {list.logo ? (
                             <img
                               src={list.logo}
@@ -955,7 +986,7 @@ const Lists = () => {
                     </TableCell>
                     <TableCell>
                       <span
-                        className={`px-2 py-1 rounded text-xs ${
+                        className={`flex-nowrap px-2 py-1 rounded text-xs ${
                           associatedAutomation
                             ? "bg-blue-100 text-blue-800 border border-blue-200"
                             : "bg-gray-100 text-gray-800 border border-gray-200"

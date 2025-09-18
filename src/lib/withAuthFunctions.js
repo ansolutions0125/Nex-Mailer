@@ -1,64 +1,42 @@
 // src/lib/withAuthFunctions.js
 import dbConnect from "@/config/mongoConfig";
-import { verifyJWT } from "./jwt";
+import { decodeJWT, verifyJWT } from "./jwt";
 import { computeAdminPermissions } from "./permissions";
 
 import Admin from "@/models/Admin";
 import AdminSession from "@/models/AdminSession";
 import Customer from "@/models/Customer";
 import Session from "@/models/CustomerSession";
+import { AUTH_ERRORS } from "@/presets/AUTH_ERRORS";
 
 export async function adminReqWithAuth(headers) {
   await dbConnect();
 
   const token = headers.get("mailer-auth-token");
   if (!token) {
-    throw {
-      statusCode: 401,
-      message: "No auth token provided"
-    };
+    throw AUTH_ERRORS.NO_TOKEN;
   }
 
-  // When verifyJWT() throws an error:
-  // 1. The error is caught in the catch block
-  // 2. A new Error is created with message "Invalid or expired token" 
-  // 3. statusCode 401 is set on the error
-  // 4. The error is thrown, stopping execution
   let decoded;
   try {
     decoded = verifyJWT(token);
   } catch (err) {
-    throw {
-      statusCode: 401,
-      message: "Invalid or expired token"
-    };
+    throw AUTH_ERRORS.INVALID_TOKEN;
   }
 
-  // Validate JWT structure
   if (!decoded.adminId || !decoded.jti || decoded.typ !== "admin") {
-    throw {
-      statusCode: 401,
-      message: "Invalid token structure"
-    };
+    throw AUTH_ERRORS.INVALID_STRUCTURE;
   }
 
-  // Find admin
   const admin = await Admin.findById(decoded.adminId).lean();
   if (!admin) {
-    throw {
-      statusCode: 401,
-      message: "Admin not found"
-    };
+    throw AUTH_ERRORS.ADMIN_NOT_FOUND;
   }
 
   if (!admin.isActive) {
-    throw {
-      statusCode: 403,
-      message: "Admin account is deactivated"
-    };
+    throw AUTH_ERRORS.ADMIN_INACTIVE;
   }
 
-  // Validate session
   const activeSession = await AdminSession.findOne({
     actorType: "admin",
     adminId: admin._id,
@@ -69,26 +47,21 @@ export async function adminReqWithAuth(headers) {
   });
 
   if (!activeSession) {
-    throw {
-      statusCode: 401,
-      message: "No active session found"
-    };
+    throw AUTH_ERRORS.NO_ACTIVE_SESSION;
   }
 
-  // Update last active
   await AdminSession.updateOne(
     { _id: activeSession._id },
     { $set: { lastActiveAt: new Date() } }
   );
 
-  // Compute permissions
   const permissions = await computeAdminPermissions(admin);
 
   return {
     admin,
     session: activeSession,
     permissions: permissions.effective,
-    perms: permissions, // for backward compatibility
+    perms: permissions,
   };
 }
 
@@ -97,44 +70,31 @@ export async function customerReqWithAuth(headers) {
 
   const token = headers.get("mailer-auth-token");
   if (!token) {
-    const error = new Error("No auth token provided");
-    error.statusCode = 401;
-    throw error;
+    throw AUTH_ERRORS.NO_TOKEN;
   }
 
   let decoded;
   try {
     decoded = verifyJWT(token);
   } catch (err) {
-    const error = new Error("Invalid or expired token");
-    error.statusCode = 401;
-    throw error;
+    throw AUTH_ERRORS.INVALID_TOKEN;
   }
 
-  // Validate JWT structure for customer
-  if (!decoded.sub || !decoded.sid || decoded.typ !== "customer") {
-    const error = new Error("Invalid token structure");
-    error.statusCode = 401;
-    throw error;
+  if (decoded.roleKey !== "customer" || decoded.typ !== "customer") {
+    throw AUTH_ERRORS.INVALID_STRUCTURE;
   }
 
-  // Find customer
-  const customer = await Customer.findById(decoded.sub).lean();
+  const customer = await Customer.findById(decoded.customerId).lean();
   if (!customer) {
-    const error = new Error("Customer not found");
-    error.statusCode = 401;
-    throw error;
+    throw AUTH_ERRORS.CUSTOMER_NOT_FOUND;
   }
 
   if (!customer.isActive) {
-    const error = new Error("Customer account is deactivated");
-    error.statusCode = 403;
-    throw error;
+    throw AUTH_ERRORS.CUSTOMER_INACTIVE;
   }
 
-  // Validate session using the correct Session model structure
   const activeSession = await Session.findOne({
-    tokenId: decoded.jti || decoded.sid, // handle both possible field names
+    tokenId: decoded.jti || decoded.sid,
     actorType: "customer",
     actorId: customer._id,
     isActive: true,
@@ -143,25 +103,19 @@ export async function customerReqWithAuth(headers) {
   });
 
   if (!activeSession) {
-    const error = new Error("No active session found");
-    error.statusCode = 401;
-    throw error;
+    throw AUTH_ERRORS.NO_ACTIVE_SESSION;
   }
 
   return { customer, session: activeSession };
 }
 
-// Helper function to check permissions
 export function requirePermission(authData, permission) {
   if (!authData?.permissions?.includes(permission)) {
-    const error = new Error("Insufficient permissions");
-    error.statusCode = 403;
-    throw error;
+    throw AUTH_ERRORS.INSUFFICIENT_PERMISSIONS;
   }
   return true;
 }
 
-// Helper function to check if user is owner
 export function requireOwner(authData) {
   const isOwner =
     authData?.perms?.roleKey === "owner" ||
@@ -169,42 +123,32 @@ export function requireOwner(authData) {
     authData?.admin?.roleKey === "owner";
 
   if (!isOwner) {
-    const error = new Error("Owner role required");
-    error.statusCode = 403;
-    throw error;
+    throw AUTH_ERRORS.OWNER_REQUIRED;
   }
   return true;
 }
 
-/**
- * Throws an Error with .statusCode attached.
- */
-function _throw(statusCode, message) {
-  const err = new Error(message);
-  err.statusCode = statusCode;
-  throw err;
-}
- 
 export async function anyReqWithAuth(headers) {
   const token = headers.get("mailer-auth-token");
-  if (!token) _throw(401, "No auth token provided");
+  if (!token) throw AUTH_ERRORS.NO_TOKEN;
 
   let decoded;
   try {
-    decoded = verifyJWT(token);
+    decoded = decodeJWT(token);
   } catch {
-    _throw(401, "Invalid or expired token");
+    throw AUTH_ERRORS.INVALID_TOKEN;
   }
 
-  // Prefer explicit "typ" when present, but be tolerant to structure
   const isAdminToken =
     decoded?.typ === "admin" || (decoded?.adminId && decoded?.jti);
   const isCustomerToken =
-    decoded?.typ === "customer" || (decoded?.sub && (decoded?.sid || decoded?.jti));
+    decoded?.typ === "customer" ||
+    (decoded?.sub && (decoded?.sid || decoded?.jti));
 
   if (isAdminToken) {
-    // Leverage your strict admin auth (DB checks, session validity, lastActive update, permissions)
-    const { admin, session, permissions, perms } = await adminReqWithAuth(headers);
+    const { admin, session, permissions, perms } = await adminReqWithAuth(
+      headers
+    );
     return {
       actorType: "admin",
       tokenType: "admin",
@@ -222,7 +166,6 @@ export async function anyReqWithAuth(headers) {
   }
 
   if (isCustomerToken) {
-    // Leverage your strict customer auth (DB checks, session validity)
     const { customer, session } = await customerReqWithAuth(headers);
     return {
       actorType: "customer",
@@ -232,45 +175,43 @@ export async function anyReqWithAuth(headers) {
       email: customer.email,
       roleKey: customer.roleKey || "customer",
       isActive: !!customer.isActive,
-      permissions: [],      // customers don't use your admin permission system
-      perms: undefined,     // keep field for shape parity; not applicable
+      permissions: [],
+      perms: undefined,
       customer,
       session,
       tokenRaw: decoded,
     };
   }
 
-  _throw(401, "Unrecognized token type");
+  throw AUTH_ERRORS.UNRECOGNIZED_TOKEN;
 }
 
-
 export async function validateAccessBothAdminCustomer(request) {
-  // Authenticate user
-  const authData = await anyReqWithAuth(request.headers);
+  try {
+    const authData = await anyReqWithAuth(request.headers);
 
-  // Validate user exists
-  if (!authData?.customer?._id && !authData?.admin?._id) {
-    throw {
-      statusCode: 401,
-      message: "Unauthorized"
-    };
-  }
+    if (!authData?.customer?._id && !authData?.admin?._id) {
+      throw AUTH_ERRORS.UNAUTHORIZED;
+    }
 
-  // Check admin permissions if admin user
-  if (authData.admin?._id) {
-    try {
-      // First try owner check
-      requireOwner(authData);
-    } catch (error) {
+    if (authData.admin?._id) {
       try {
-        // Then try customer.view permission
-        requirePermission(authData, "customer.view");
-      } catch {
-        // Finally try customer.manage permission
-        requirePermission(authData, "customer.manage");
+        requireOwner(authData);
+      } catch (error) {
+        try {
+          requirePermission(authData, "customer.view");
+        } catch {
+          requirePermission(authData, "customer.manage");
+        }
       }
     }
-  }
 
-  return authData;
+    return authData;
+  } catch (error) {
+    throw {
+      code: error.code || "AUTH999",
+      statusCode: error.statusCode || 500,
+      message: error.message || "Internal server error",
+    };
+  }
 }

@@ -22,7 +22,7 @@ export async function GET(request) {
         lists = await List.findOne({
           _id: listId,
           customerId: authData.customer._id,
-        });
+        }).populate('automationId customerId');
       }
 
       if (!lists) {
@@ -38,15 +38,15 @@ export async function GET(request) {
           lists = await List.find({
             customerId: authData.customer._id,
             automationId: null,
-          });
+          }).populate('automationId customerId');
         } else {
-          lists = await List.find({ customerId: authData.customer._id });
+          lists = await List.find({ customerId: authData.customer._id }).populate('automationId customerId');
         }
       } else {
         if (notConnected === "true") {
-          lists = await List.find({ automationId: null });
+          lists = await List.find({ automationId: null }).populate('automationId customerId');
         } else {
-          lists = await List.find({});
+          lists = await List.find({}).populate('automationId customerId');
         }
       }
     }
@@ -292,7 +292,7 @@ export async function DELETE(request) {
     if (deletedList.customerId) {
       await Customer.findByIdAndUpdate(deletedList.customerId, {
         $inc: { "stats.totalLists": -1 },
-        $pull: { lists: deletedList._id },
+        $pull: { lists: deletedList._id.toString() },
       });
     }
 

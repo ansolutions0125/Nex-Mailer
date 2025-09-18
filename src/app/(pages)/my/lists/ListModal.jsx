@@ -245,7 +245,6 @@ const ListModal = ({
                     )}
                   </div>
                 </div>
- 
               </div>
             </div>
           </div>
@@ -351,9 +350,7 @@ const ListModal = ({
 
                   {selectedAutomation && (
                     <div className="mt-2 bg-white border border-zinc-200 rounded p-3">
-                      <p className="text-sm text-zinc-800 mb-2">
-                        Currently Selected:
-                      </p>
+                      <p className={labelStyles("base")}>Currently Selected:</p>
                       <div className="flex flex-wrap gap-2">
                         <span className="bg-zinc-100 text-zinc-700 px-3 py-1.5 text-sm rounded-md border">
                           {selectedAutomation.name}

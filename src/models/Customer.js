@@ -21,18 +21,6 @@ const EmailLimitsSchema = new Schema(
   { _id: false }
 );
 
-/** Snapshot of the purchased plan at the time of purchase */
-const PlanSnapshotSchema = new Schema(
-  {
-    name: { type: String, trim: true },
-    price: { type: Number, min: 0 },
-    currency: { type: String, default: "USD" },
-    monthlyEmailLimit: { type: Number, min: 0 },
-    length: { type: String, enum: ["1month", "3month", "6month", "1year"] },
-    features: [{ type: String }],
-  },
-  { _id: false }
-);
 
 /** Aggregated counters for dashboards */
 const CustomerStatsSchema = new Schema(
@@ -73,19 +61,16 @@ const CustomerSchema = new Schema(
 
     // ---- Plan link & snapshot ----
     planId: { type: Schema.Types.ObjectId, ref: "Plan", default: null },
-    planSnapshot: { type: PlanSnapshotSchema, default: undefined },
 
     // ---- Quota + Stats ----
     emailLimits: { type: EmailLimitsSchema, default: () => ({}) },
     stats: { type: CustomerStatsSchema, default: () => ({}) },
     
     // ---- Optional associations (owner) ----
-    lists: [{ type: Schema.Types.ObjectId, ref: "List" }],
-    websites: [{ type: Schema.Types.ObjectId, ref: "Website", index: true }],
-    templates: [{ type: Schema.Types.ObjectId, ref: "Template" }],
-    servers: [{ type: Schema.Types.ObjectId, ref: "Server" }],
+    lists: [{ type: Schema.Types.ObjectId, ref: "List", index: true }],
+    templates: [{ type: Schema.Types.ObjectId, ref: "Template", index: true }],
+    servers: [{ type: Schema.Types.ObjectId, ref: "Server", index: true }],
 
-    ownerUserId: { type: Schema.Types.ObjectId, ref: "User" },
     team: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }

@@ -1,40 +1,48 @@
-// file: /app/helpers/front-end/request.jsx
+import { AUTH_ERRORS } from "@/presets/AUTH_ERRORS";
 
 // --- Internal state (module-scoped, shared across imports) ---
 const inFlight = new Map(); // key -> { promise, startedAt }
 const memoryCache = new Map(); // key -> { data, expiry, resolvedAt }
 
 const defaultOptions = {
-  cacheTtlMs: 800,        // serve from short cache to collapse bursts
-  dedupeWindowMs: 600,    // ignore duplicates that arrive very quickly
-  retries: 2,             // retry on 429/5xx
-  retryBaseMs: 300,       // backoff base
-  retryFactor: 2,         // exponential factor
-  abortOnTimeoutMs: 0,    // 0 = disabled; set e.g. 15000 to enable
+  cacheTtlMs: 800,
+  dedupeWindowMs: 600,
+  retries: 2,
+  retryBaseMs: 300,
+  retryFactor: 2,
+  abortOnTimeoutMs: 0,
 };
 
-// Stable stringify so payload order doesn’t change the key
+// Stable stringify so payload order doesn't change the key
 const stableStringify = (obj) => {
   if (!obj || typeof obj !== "object") return String(obj);
   if (Array.isArray(obj)) return `[${obj.map(stableStringify).join(",")}]`;
-  return `{${Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+  return `{${Object.keys(obj)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(",")}}`;
 };
 
 const makeKey = ({ url, method, token, payload }) =>
   `${method || "GET"}::${url}::${token || ""}::${stableStringify(payload)}`;
 
 // Simple sleep
-const delay = (ms) => new Promise(res => setTimeout(res, ms));
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+/** Map server auth errors to AUTH_ERRORS by message + status */
+const mapAuthError = (status, message) => {
+  if (status !== 401 && status !== 403) return null;
+  const byMsg = Object.values(AUTH_ERRORS).find((e) => e.message === message);
+  if (byMsg) return byMsg;
+
+  // Fallback by status
+  if (status === 401) return AUTH_ERRORS.UNAUTHORIZED;
+  if (status === 403) return AUTH_ERRORS.INSUFFICIENT_PERMISSIONS;
+  return null;
+};
 
 export const fetchWithAuthAdmin = async (req, opts = {}) => {
-  const {
-    url,
-    admin,
-    token,
-    method = "GET",
-    payload = null,
-    setAdmin,
-  } = req;
+  const { url, admin, token, method = "GET", payload = null, setAdmin } = req;
 
   const {
     cacheTtlMs,
@@ -53,22 +61,17 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
 
   // 1) Serve from tiny memory cache (burst suppression)
   const cached = memoryCache.get(key);
-  if (cached && cached.expiry > now) {
-    return cached.data;
-  }
+  if (cached && cached.expiry > now) return cached.data;
 
   // 2) Share in-flight identical requests
   const inflightEntry = inFlight.get(key);
-  if (inflightEntry) {
-    // If another identical request started very recently, just share it
-    if (now - inflightEntry.startedAt <= dedupeWindowMs) {
-      return inflightEntry.promise;
-    }
+  if (inflightEntry && now - inflightEntry.startedAt <= dedupeWindowMs) {
+    return inflightEntry.promise;
   }
 
   const headers = {
     "Content-Type": "application/json",
-    ...(admin && token && { "mailer-auth-token": token })
+    ...(admin && token && { "mailer-auth-token": token }), // server expects this header
   };
 
   const controller = abortOnTimeoutMs ? new AbortController() : null;
@@ -81,11 +84,7 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
-        const fetchOptions = {
-          method,
-          headers,
-          signal: controller?.signal,
-        };
+        const fetchOptions = { method, headers, signal: controller?.signal };
         if (payload) fetchOptions.body = JSON.stringify(payload);
 
         const response = await fetch(url, fetchOptions);
@@ -93,25 +92,27 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
         // Retry on transient statuses
         if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
           if (attempt < retries) {
-            const backoff = retryBaseMs * Math.pow(retryFactor, attempt);
-            attempt++;
+            const backoff = retryBaseMs * Math.pow(retryFactor, attempt++);
             await delay(backoff);
             continue;
           }
         }
 
         // Parse JSON safely
-        let json;
         const text = await response.text();
-        try { json = text ? JSON.parse(text) : null; }
-        catch { json = { raw: text }; }
+        let json;
+        try {
+          json = text ? JSON.parse(text) : null;
+        } catch {
+          json = { raw: text };
+        }
 
-        // Optionally throw on non-OK if you want
-        // if (!response.ok) {
-        //   const err = new Error(`HTTP ${response.status}`);
-        //   err.response = json;
-        //   throw err;
-        // }
+        // Attach authError mapping for 401/403 using server’s messages
+        if (response.status === 401 || response.status === 403) {
+          const message = json?.message || "";
+          const authError = mapAuthError(response.status, message);
+          if (authError) json = { ...json, authError };
+        }
 
         // Special admin update handling
         if (url.includes("/api/admin") && method === "PUT" && json) {
@@ -122,14 +123,9 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
 
         return json;
       } catch (err) {
-        // Abort errors or network issues
-        const isAbort = err?.name === "AbortError";
-        if (isAbort) throw err;
-
-        // Retry network errors
+        if (err?.name === "AbortError") throw err;
         if (attempt < retries) {
-          const backoff = retryBaseMs * Math.pow(retryFactor, attempt);
-          attempt++;
+          const backoff = retryBaseMs * Math.pow(retryFactor, attempt++);
           await delay(backoff);
           continue;
         }
@@ -140,13 +136,8 @@ export const fetchWithAuthAdmin = async (req, opts = {}) => {
 
   const promise = doFetch()
     .then((data) => {
-      // put in tiny cache to collapse immediate duplicates
       if (cacheTtlMs > 0) {
-        memoryCache.set(key, {
-          data,
-          expiry: Date.now() + cacheTtlMs,
-          resolvedAt: Date.now(),
-        });
+        memoryCache.set(key, { data, expiry: Date.now() + cacheTtlMs, resolvedAt: Date.now() });
       }
       return data;
     })
@@ -166,7 +157,7 @@ export const fetchWithAuthCustomer = async (req, opts = {}) => {
     token,
     method = "GET",
     payload = null,
-    setAdmin,
+    setCustomer, // ✅ fix: was setAdmin
   } = req;
 
   const {
@@ -178,7 +169,7 @@ export const fetchWithAuthCustomer = async (req, opts = {}) => {
     abortOnTimeoutMs,
   } = { ...defaultOptions, ...opts };
 
-  if (!url) throw new Error("fetchWithAuthAdmin: url is required");
+  if (!url) throw new Error("fetchWithAuthCustomer: url is required"); // ✅ fix: correct helper name
 
   // Build request key
   const key = makeKey({ url, method, token, payload });
@@ -186,22 +177,17 @@ export const fetchWithAuthCustomer = async (req, opts = {}) => {
 
   // 1) Serve from tiny memory cache (burst suppression)
   const cached = memoryCache.get(key);
-  if (cached && cached.expiry > now) {
-    return cached.data;
-  }
+  if (cached && cached.expiry > now) return cached.data;
 
   // 2) Share in-flight identical requests
   const inflightEntry = inFlight.get(key);
-  if (inflightEntry) {
-    // If another identical request started very recently, just share it
-    if (now - inflightEntry.startedAt <= dedupeWindowMs) {
-      return inflightEntry.promise;
-    }
+  if (inflightEntry && now - inflightEntry.startedAt <= dedupeWindowMs) {
+    return inflightEntry.promise;
   }
 
   const headers = {
     "Content-Type": "application/json",
-    ...(customer && token && { "mailer-auth-token": token })
+    ...(customer && token && { "mailer-auth-token": token }), // server expects this header
   };
 
   const controller = abortOnTimeoutMs ? new AbortController() : null;
@@ -214,11 +200,7 @@ export const fetchWithAuthCustomer = async (req, opts = {}) => {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
-        const fetchOptions = {
-          method,
-          headers,
-          signal: controller?.signal,
-        };
+        const fetchOptions = { method, headers, signal: controller?.signal };
         if (payload) fetchOptions.body = JSON.stringify(payload);
 
         const response = await fetch(url, fetchOptions);
@@ -226,43 +208,40 @@ export const fetchWithAuthCustomer = async (req, opts = {}) => {
         // Retry on transient statuses
         if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
           if (attempt < retries) {
-            const backoff = retryBaseMs * Math.pow(retryFactor, attempt);
-            attempt++;
+            const backoff = retryBaseMs * Math.pow(retryFactor, attempt++);
             await delay(backoff);
             continue;
           }
         }
 
         // Parse JSON safely
-        let json;
         const text = await response.text();
-        try { json = text ? JSON.parse(text) : null; }
-        catch { json = { raw: text }; }
+        let json;
+        try {
+          json = text ? JSON.parse(text) : null;
+        } catch {
+          json = { raw: text };
+        }
 
-        // Optionally throw on non-OK if you want
-        // if (!response.ok) {
-        //   const err = new Error(`HTTP ${response.status}`);
-        //   err.response = json;
-        //   throw err;
-        // }
+        // Attach authError mapping for 401/403 using server’s messages
+        if (response.status === 401 || response.status === 403) {
+          const message = json?.message || "";
+          const authError = mapAuthError(response.status, message);
+          if (authError) json = { ...json, authError };
+        }
 
-        // Special customer update handling
-        if (url.includes("/api/customer") && method === "PUT" && json) {
+        // Special customer update handling (correct route + setter)
+        if (url.includes("/api/customers") && method === "PUT" && json) {
           if (!customer || customer._id === json?.data?._id) {
-            setAdmin?.(json?.data);
+            setCustomer?.(json?.data);
           }
         }
 
         return json;
       } catch (err) {
-        // Abort errors or network issues
-        const isAbort = err?.name === "AbortError";
-        if (isAbort) throw err;
-
-        // Retry network errors
+        if (err?.name === "AbortError") throw err;
         if (attempt < retries) {
-          const backoff = retryBaseMs * Math.pow(retryFactor, attempt);
-          attempt++;
+          const backoff = retryBaseMs * Math.pow(retryFactor, attempt++);
           await delay(backoff);
           continue;
         }
@@ -273,13 +252,8 @@ export const fetchWithAuthCustomer = async (req, opts = {}) => {
 
   const promise = doFetch()
     .then((data) => {
-      // put in tiny cache to collapse immediate duplicates
       if (cacheTtlMs > 0) {
-        memoryCache.set(key, {
-          data,
-          expiry: Date.now() + cacheTtlMs,
-          resolvedAt: Date.now(),
-        });
+        memoryCache.set(key, { data, expiry: Date.now() + cacheTtlMs, resolvedAt: Date.now() });
       }
       return data;
     })

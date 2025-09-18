@@ -1,25 +1,35 @@
-// /api/work-flow/automation/route.js
+// app/api/work-flow/flow/route.js
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@/config/mongoConfig";
-import Website from "@/models/Website";
+
+import Customer from "@/models/Customer";
 import Stats from "@/models/Stats";
 import Flow from "@/models/Flow";
 import List from "@/models/List";
 
-// GET - Retrieve automation(s) with full data
+import { validateAccessBothAdminCustomer } from "@/lib/withAuthFunctions";
+
+/**
+ * GET /api/work-flow/flow
+ *  - ?automationId=<id>  -> returns a single automation with populated customer/list
+ *  - pagination: ?page=&limit=
+ *  - If caller is a customer, results are auto-scoped to their customerId
+ *  - Response (list): { success, data: { automations, pagination } }
+ *  - Response (single): { success, data: { automation, connectedList, customerData, stepsCount, steps } }
+ */
 export async function GET(request) {
   try {
+    const authData = await validateAccessBothAdminCustomer(request);
     await dbConnect();
 
     const { searchParams } = new URL(request.url);
     const automationId = searchParams.get("automationId");
-    const websiteId = searchParams.get("websiteId");
-    const page = parseInt(searchParams.get("page")) || 1;
-    const limit = parseInt(searchParams.get("limit")) || 10;
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "10", 10);
     const skip = (page - 1) * limit;
 
-    // If specific automation ID is requested
+    // Single automation by id
     if (automationId) {
       if (!mongoose.Types.ObjectId.isValid(automationId)) {
         return NextResponse.json(
@@ -28,16 +38,17 @@ export async function GET(request) {
         );
       }
 
-      const automation = await Flow.findById(automationId).populate([
+      // Scope for customers: ensure ownership
+      const scope = authData.customer?._id
+        ? { _id: automationId, customerId: authData.customer._id }
+        : { _id: automationId };
+
+      const automation = await Flow.findOne(scope).populate([
+        { path: "listId", model: "List", select: "_id name isActive" },
         {
-          path: "websiteId",
-          model: "Website",
-          select: "_id name logo miniId isActive stats",
-        },
-        {
-          path: "listId",
-          model: "List",
-          select: "_id name miniId isActive",
+          path: "customerId",
+          model: "Customer",
+          select: "_id firstName lastName email slug isActive",
         },
       ]);
 
@@ -51,12 +62,16 @@ export async function GET(request) {
       return NextResponse.json({
         success: true,
         data: {
-          automation: automation,
-          websiteData: automation.websiteId,
+          automation,
           connectedList: automation.listId
+            ? { _id: automation.listId._id, name: automation.listId.name }
+            : null,
+          customerData: automation.customerId
             ? {
-                _id: automation.listId._id,
-                name: automation.listId.name,
+                _id: automation.customerId._id,
+                firstName: automation.customerId.firstName,
+                lastName: automation.customerId.lastName,
+                email: automation.customerId.email,
               }
             : null,
           stepsCount: automation.steps.length,
@@ -65,65 +80,47 @@ export async function GET(request) {
       });
     }
 
-    // Build query filter
-    let query = {};
-    if (websiteId) {
-      if (!mongoose.Types.ObjectId.isValid(websiteId)) {
-        return NextResponse.json(
-          { success: false, message: "Invalid website ID format" },
-          { status: 400 }
-        );
-      }
-      query.websiteId = websiteId;
-    }
+    // List with pagination
+    const query = authData.customer?._id
+      ? { customerId: authData.customer._id }
+      : {};
 
-    // Get automations with pagination
     const automations = await Flow.find(query)
       .populate([
+        { path: "listId", model: "List", select: "_id name isActive" },
         {
-          path: "websiteId",
-          model: "Website",
-          select: "_id name logo miniId isActive",
-        },
-        {
-          path: "listId",
-          model: "List",
-          select: "_id name miniId isActive",
+          path: "customerId",
+          model: "Customer",
+          select: "_id firstName lastName email slug isActive",
         },
       ])
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // Get total count for pagination
     const totalAutomations = await Flow.countDocuments(query);
-    const totalPages = Math.ceil(totalAutomations / limit);
+    const totalPages = Math.max(1, Math.ceil(totalAutomations / limit));
 
-    // Format response data
     const formattedAutomations = automations.map((automation) => ({
       automation: {
         _id: automation._id,
         name: automation.name,
         logo: automation.logo,
-        flowId: automation.flowId,
+        flowId: automation.flowId, // keep if you’ve been using it; harmless if undefined
         isActive: automation.isActive,
         stats: automation.stats,
         createdAt: automation.createdAt,
         updatedAt: automation.updatedAt,
       },
-      websiteData: automation.websiteId
-        ? {
-            _id: automation.websiteId._id,
-            name: automation.websiteId.name,
-            logo: automation.websiteId.logo,
-            miniId: automation.websiteId.miniId,
-            isActive: automation.websiteId.isActive,
-          }
-        : null,
       connectedList: automation.listId
+        ? { _id: automation.listId._id, name: automation.listId.name }
+        : null,
+      customerData: automation.customerId
         ? {
-            _id: automation.listId._id,
-            name: automation.listId.name,
+            _id: automation.customerId._id,
+            firstName: automation.customerId.firstName,
+            lastName: automation.customerId.lastName,
+            email: automation.customerId.email,
           }
         : null,
       stepsCount: automation.steps.length,
@@ -136,7 +133,7 @@ export async function GET(request) {
         automations: formattedAutomations,
         pagination: {
           currentPage: page,
-          totalPages: totalPages,
+          totalPages,
           totalItems: totalAutomations,
           itemsPerPage: limit,
           hasNext: page < totalPages,
@@ -145,89 +142,78 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error("GET Automation Error:", error);
+    console.error("GET Flow Error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      },
+      { success: false, message: "Internal server error", error: error.message },
       { status: 500 }
     );
   }
 }
 
-// POST - Create new automation
+/**
+ * POST /api/work-flow/flow
+ *  - body: { name, description?, customerId?, listId?, logo?, steps?=[] }
+ *  - If caller is a customer, customerId is forced to their id
+ */
 export async function POST(request) {
+  
   try {
+    const authData = await validateAccessBothAdminCustomer(request);
     await dbConnect();
 
     const body = await request.json();
-    const { name, description, websiteId, listId, logo, steps = [] } = body;
+    const { name, description, customerId, listId, logo, steps = [] } = body;
 
-    // Validation
-    if (!name || name.trim() === "") {
+    if (!name || !name.trim()) {
       return NextResponse.json(
         { success: false, message: "Automation name is required" },
         { status: 400 }
       );
     }
 
-    if (!websiteId || !mongoose.Types.ObjectId.isValid(websiteId)) {
+    // Prefer explicit body.customerId for admins; force for customers
+    const targetCustomerId = authData.customer?._id || customerId;
+    if (!targetCustomerId || !mongoose.Types.ObjectId.isValid(targetCustomerId)) {
       return NextResponse.json(
-        { success: false, message: "Valid website ID is required" },
+        { success: false, message: "Valid customer ID is required" },
         { status: 400 }
       );
     }
 
-    // Verify website exists
-    const website = await Website.findById(websiteId);
-    if (!website) {
+    // Validate customer exists
+    const customer = await Customer.findById(targetCustomerId);
+    if (!customer) {
       return NextResponse.json(
-        { success: false, message: "Website not found" },
+        { success: false, message: "Customer not found" },
         { status: 404 }
       );
     }
 
-    // Create automation
     const automationData = {
       name: name.trim(),
-      description: description,
-      websiteId,
+      description,
+      customerId: targetCustomerId,
       listId: listId || null,
-      steps: steps,
+      steps,
       isActive: false,
     };
+    if (logo) automationData.logo = logo;
 
-    if (logo) {
-      automationData.logo = logo;
-    }
+    const automation = await new Flow(automationData).save();
 
-    const automation = new Flow(automationData);
-    await automation.save();
-
-    // Update website's automation array
-    await Website.findByIdAndUpdate(
-      websiteId,
-      {
-        $push: { automations: automation._id },
-        $inc: { "stats.totalAutomations": 1 },
-      },
+    // Customer stats++
+    await Customer.findByIdAndUpdate(
+      targetCustomerId,
+      { $inc: { "stats.totalAutomations": 1 } },
       { new: true }
     );
 
-    // Update list with automation ID if listId exists
+    // Backlink list -> automation
     if (listId) {
-      await List.findByIdAndUpdate(
-        listId,
-        {
-          automationId: automation._id,
-        },
-        { new: true }
-      );
+      await List.findByIdAndUpdate(listId, { automationId: automation._id });
     }
 
-    // Update global stats
+    // Global stats
     await Stats.findOneAndUpdate(
       { _id: "current" },
       {
@@ -239,18 +225,10 @@ export async function POST(request) {
       { upsert: true, new: true }
     );
 
-    // Populate the created automation
-    const populatedAutomation = await Flow.findById(automation._id).populate([
-      {
-        path: "websiteId",
-        model: "Website",
-        select: "_id name logo miniId isActive",
-      },
-      {
-        path: "listId",
-        model: "List",
-        select: "_id name miniId isActive",
-      },
+    // Populate for response
+    const populated = await Flow.findById(automation._id).populate([
+      { path: "customerId", model: "Customer", select: "_id firstName lastName email slug isActive" },
+      { path: "listId", model: "List", select: "_id name isActive" },
     ]);
 
     return NextResponse.json(
@@ -258,49 +236,41 @@ export async function POST(request) {
         success: true,
         message: "Automation created successfully",
         data: {
-          automation: populatedAutomation,
-          websiteData: populatedAutomation.websiteId,
-          connectedList: populatedAutomation.listId
-            ? {
-                _id: populatedAutomation.listId._id,
-                name: populatedAutomation.listId.name,
-              }
+          automation: populated,
+          customerData: populated.customerId,
+          connectedList: populated.listId
+            ? { _id: populated.listId._id, name: populated.listId.name }
             : null,
         },
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error("POST Automation Error:", error);
-
+    console.error("POST Flow Error:", error);
     if (error.name === "ValidationError") {
-      const validationErrors = Object.values(error.errors).map(
-        (err) => err.message
-      );
+      const validationErrors = Object.values(error.errors).map((e) => e.message);
       return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: validationErrors,
-        },
+        { success: false, message: "Validation failed", errors: validationErrors },
         { status: 400 }
       );
     }
-
     return NextResponse.json(
-      {
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      },
+      { success: false, message: "Internal server error", error: error.message },
       { status: 500 }
     );
   }
 }
 
-// PUT - Update automation with status system
+/**
+ * PUT /api/work-flow/flow
+ *  - body: { automationId, status, updateData }
+ *  - status ∈ {"multi","nameChange","statusChange","listIdUpdate"}
+ *  - For customers: only allow updates to their own automations
+ */
 export async function PUT(request) {
+  
   try {
+    const authData = await validateAccessBothAdminCustomer(request);
     await dbConnect();
 
     const body = await request.json();
@@ -312,33 +282,26 @@ export async function PUT(request) {
         { status: 400 }
       );
     }
-
     if (!status) {
       return NextResponse.json(
         { success: false, message: "Status is required" },
         { status: 400 }
       );
     }
-
-    const validStatuses = [
-      "multi",
-      "nameChange",
-      "statusChange",
-      "listIdUpdate",
-    ];
+    const validStatuses = ["multi", "nameChange", "statusChange", "listIdUpdate"];
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
-        {
-          success: false,
-          message: `Invalid status. Must be one of: ${validStatuses.join(
-            ", "
-          )}`,
-        },
+        { success: false, message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
         { status: 400 }
       );
     }
 
-    const automation = await Flow.findById(automationId);
+    // Ownership check for customers
+    const scope = authData.customer?._id
+      ? { _id: automationId, customerId: authData.customer._id }
+      : { _id: automationId };
+
+    const automation = await Flow.findOne(scope);
     if (!automation) {
       return NextResponse.json(
         { success: false, message: "Automation not found" },
@@ -350,8 +313,8 @@ export async function PUT(request) {
     let responseMessage = "";
 
     switch (status) {
-      case "nameChange":
-        if (!updateData.name || updateData.name.trim() === "") {
+      case "nameChange": {
+        if (!updateData?.name || !updateData.name.trim()) {
           return NextResponse.json(
             { success: false, message: "New name is required for nameChange" },
             { status: 400 }
@@ -360,33 +323,27 @@ export async function PUT(request) {
         updateObject.name = updateData.name.trim();
         responseMessage = "Automation name updated successfully";
         break;
-
-      case "statusChange":
-        if (typeof updateData.isActive !== "boolean") {
+      }
+      case "statusChange": {
+        if (typeof updateData?.isActive !== "boolean") {
           return NextResponse.json(
-            {
-              success: false,
-              message: "isActive boolean value is required for statusChange",
-            },
+            { success: false, message: "isActive boolean value is required for statusChange" },
             { status: 400 }
           );
         }
         updateObject.isActive = updateData.isActive;
-        responseMessage = `Automation ${
-          updateData.isActive ? "activated" : "deactivated"
-        } successfully`;
+        responseMessage = `Automation ${updateData.isActive ? "activated" : "deactivated"} successfully`;
         break;
-
-      case "listIdUpdate":
-        if (updateData.listId) {
+      }
+      case "listIdUpdate": {
+        // attach or detach a list backing link
+        if (updateData?.listId) {
           if (!mongoose.Types.ObjectId.isValid(updateData.listId)) {
             return NextResponse.json(
               { success: false, message: "Invalid list ID format" },
               { status: 400 }
             );
           }
-
-          // Verify list exists
           const list = await List.findById(updateData.listId);
           if (!list) {
             return NextResponse.json(
@@ -394,40 +351,26 @@ export async function PUT(request) {
               { status: 404 }
             );
           }
-
-          // Update list with automation ID if listId exists
-          if (updateData.listId) {
-            await List.findByIdAndUpdate(
-              updateData.listId,
-              {
-                automationId: automation._id,
-              },
-              { new: true }
-            );
-          }
-
+          await List.findByIdAndUpdate(updateData.listId, { automationId: automation._id });
           updateObject.listId = updateData.listId;
           responseMessage = "Automation list updated successfully";
         } else {
+          // detach
           updateObject.listId = null;
           responseMessage = "Automation list removed successfully";
         }
         break;
-
-      case "multi":
-        // Handle multiple updates
+      }
+      case "multi": {
         if (!updateData || typeof updateData !== "object") {
           return NextResponse.json(
-            {
-              success: false,
-              message: "Update data object is required for multi status",
-            },
+            { success: false, message: "Update data object is required for multi status" },
             { status: 400 }
           );
         }
 
-        // FIXED: Only handle listId if it's explicitly being updated
-        if (updateData.hasOwnProperty("listId")) {
+        // listId explicit handling
+        if (Object.prototype.hasOwnProperty.call(updateData, "listId")) {
           if (updateData.listId) {
             if (!mongoose.Types.ObjectId.isValid(updateData.listId)) {
               return NextResponse.json(
@@ -435,8 +378,6 @@ export async function PUT(request) {
                 { status: 400 }
               );
             }
-
-            // Verify list exists
             const list = await List.findById(updateData.listId);
             if (!list) {
               return NextResponse.json(
@@ -444,63 +385,50 @@ export async function PUT(request) {
                 { status: 404 }
               );
             }
-            if (updateData.listId) {
-              await List.findByIdAndUpdate(
-                updateData.listId,
-                {
-                  automationId: automation._id,
-                },
-                { new: true }
-              );
-            }
-
+            await List.findByIdAndUpdate(updateData.listId, { automationId: automation._id });
             updateObject.listId = updateData.listId;
           } else {
-            // Only set to null if explicitly setting listId to null/empty
             updateObject.listId = null;
           }
         }
-        // If listId is not in updateData at all, don't touch it
 
-        // FIXED: Only handle listId if it's explicitly being updated
-        if (updateData.hasOwnProperty("websiteId")) {
-          if (updateData.websiteId) {
-            if (!mongoose.Types.ObjectId.isValid(updateData.websiteId)) {
+        // customerId reassignment (admin only; customers can’t move ownership)
+        if (Object.prototype.hasOwnProperty.call(updateData, "customerId")) {
+          if (authData.customer?._id) {
+            return NextResponse.json(
+              { success: false, message: "Customers cannot change automation ownership" },
+              { status: 403 }
+            );
+          }
+          if (updateData.customerId) {
+            if (!mongoose.Types.ObjectId.isValid(updateData.customerId)) {
               return NextResponse.json(
-                { success: false, message: "Invalid Website ID format" },
+                { success: false, message: "Invalid customer ID format" },
                 { status: 400 }
               );
             }
-
-            // Verify website exists
-            const website = await Website.findById(updateData.websiteId);
-            if (!website) {
+            const newCustomer = await Customer.findById(updateData.customerId);
+            if (!newCustomer) {
               return NextResponse.json(
-                { success: false, message: "Website not found" },
+                { success: false, message: "Customer not found" },
                 { status: 404 }
               );
             }
-            if (updateData.websiteId) {
-              await Website.findByIdAndUpdate(
-                updateData.websiteId,
-                {
-                  $push: { automations: automation._id },
-                  $inc: { "stats.totalAutomations": 1 },
-                },
-                { new: true }
-              );
+            // stats: decrement old, increment new
+            if (automation.customerId) {
+              await Customer.findByIdAndUpdate(automation.customerId, {
+                $inc: { "stats.totalAutomations": -1 },
+              });
             }
-
-            updateObject.websiteId = updateData.websiteId;
-          } else {
-            // Only set to null if explicitly setting websiteId to null/empty
-            updateObject.websiteId = null;
+            await Customer.findByIdAndUpdate(updateData.customerId, {
+              $inc: { "stats.totalAutomations": 1 },
+            });
+            updateObject.customerId = updateData.customerId;
           }
         }
 
-        // Validate and process each field
-        if (updateData.name !== undefined) {
-          if (!updateData.name || updateData.name.trim() === "") {
+        if (Object.prototype.hasOwnProperty.call(updateData, "name")) {
+          if (!updateData.name || !updateData.name.trim()) {
             return NextResponse.json(
               { success: false, message: "Invalid name provided" },
               { status: 400 }
@@ -508,12 +436,10 @@ export async function PUT(request) {
           }
           updateObject.name = updateData.name.trim();
         }
-
-        if (updateData.description !== undefined) {
-          updateObject.description = updateData.description.trim();
+        if (Object.prototype.hasOwnProperty.call(updateData, "description")) {
+          updateObject.description = (updateData.description || "").trim();
         }
-
-        if (updateData.isActive !== undefined) {
+        if (Object.prototype.hasOwnProperty.call(updateData, "isActive")) {
           if (typeof updateData.isActive !== "boolean") {
             return NextResponse.json(
               { success: false, message: "isActive must be a boolean" },
@@ -522,86 +448,65 @@ export async function PUT(request) {
           }
           updateObject.isActive = updateData.isActive;
         }
-
-        if (updateData.logo !== undefined) {
+        if (Object.prototype.hasOwnProperty.call(updateData, "logo")) {
           updateObject.logo = updateData.logo;
         }
 
         responseMessage = "Automation updated successfully";
         break;
-
+      }
       default:
+        // should never happen due to earlier validation
         return NextResponse.json(
           { success: false, message: "Invalid status provided" },
           { status: 400 }
         );
     }
 
-    // Update the automation
-    const updatedAutomation = await Flow.findByIdAndUpdate(
-      automationId,
-      updateObject,
-      { new: true, runValidators: true }
-    ).populate([
-      {
-        path: "websiteId",
-        model: "Website",
-        select: "_id name logo miniId isActive",
-      },
-      {
-        path: "listId",
-        model: "List",
-        select: "_id name miniId isActive subscriberCount",
-      },
+    const updated = await Flow.findByIdAndUpdate(automationId, updateObject, {
+      new: true,
+      runValidators: true,
+    }).populate([
+      { path: "customerId", model: "Customer", select: "_id firstName lastName email slug isActive" },
+      { path: "listId", model: "List", select: "_id name isActive" },
     ]);
 
     return NextResponse.json({
       success: true,
       message: responseMessage,
       data: {
-        automation: updatedAutomation,
-        websiteData: updatedAutomation.websiteId,
-        connectedList: updatedAutomation.listId
-          ? {
-              _id: updatedAutomation.listId._id,
-              name: updatedAutomation.listId.name,
-              subscriberCount: updatedAutomation.listId.subscriberCount,
-            }
+        automation: updated,
+        customerData: updated.customerId,
+        connectedList: updated.listId
+          ? { _id: updated.listId._id, name: updated.listId.name }
           : null,
         updatedFields: Object.keys(updateObject),
       },
     });
   } catch (error) {
-    console.error("PUT Automation Error:", error);
-
+    console.error("PUT Flow Error:", error);
     if (error.name === "ValidationError") {
-      const validationErrors = Object.values(error.errors).map(
-        (err) => err.message
-      );
+      const validationErrors = Object.values(error.errors).map((e) => e.message);
       return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: validationErrors,
-        },
+        { success: false, message: "Validation failed", errors: validationErrors },
         { status: 400 }
       );
     }
-
     return NextResponse.json(
-      {
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      },
+      { success: false, message: "Internal server error", error: error.message },
       { status: 500 }
     );
   }
 }
 
-// DELETE - Remove automation and update subscriber automation history
+/**
+ * DELETE /api/work-flow/flow?automationId=<id>
+ *  - For customers: can only delete their own automations
+ */
 export async function DELETE(request) {
+  
   try {
+    const authData = await validateAccessBothAdminCustomer(request);
     await dbConnect();
 
     const { searchParams } = new URL(request.url);
@@ -614,7 +519,11 @@ export async function DELETE(request) {
       );
     }
 
-    const automation = await Flow.findById(automationId);
+    const scope = authData.customer?._id
+      ? { _id: automationId, customerId: authData.customer._id }
+      : { _id: automationId };
+
+    const automation = await Flow.findOne(scope);
     if (!automation) {
       return NextResponse.json(
         { success: false, message: "Automation not found" },
@@ -622,22 +531,22 @@ export async function DELETE(request) {
       );
     }
 
-    // Store automation data before deletion
     const deletedAutomationData = {
       _id: automation._id,
       name: automation.name,
       flowId: automation.flowId,
-      websiteId: automation.websiteId,
+      customerId: automation.customerId,
       stepsCount: automation.steps.length,
     };
 
-    // Remove automation from website's automations array
-    await Website.findByIdAndUpdate(automation.websiteId, {
-      $pull: { automations: automationId },
-      $inc: { "stats.totalAutomations": -1 },
-    });
+    // Customer stats--
+    if (automation.customerId) {
+      await Customer.findByIdAndUpdate(automation.customerId, {
+        $inc: { "stats.totalAutomations": -1 },
+      });
+    }
 
-    // Update global stats
+    // Global stats
     await Stats.findOneAndUpdate(
       { _id: "current" },
       {
@@ -649,40 +558,22 @@ export async function DELETE(request) {
       { upsert: true }
     );
 
-    // TODO: Update subscriber automation history
-    // Note: You'll need to implement this based on your Subscriber model
-    // This is a placeholder for the functionality you mentioned
-    /*
-    await Subscriber.updateMany(
-      { "automationHistory.automationId": automationId },
-      {
-        $set: {
-          "automationHistory.$.status": "automation_deleted",
-          "automationHistory.$.deletedAt": new Date()
-        }
-      }
-    );
-    */
+    // Clear backlink from List if any
+    if (automation.listId) {
+      await List.findByIdAndUpdate(automation.listId, { automationId: null });
+    }
 
-    // Delete the automation
     await Flow.findByIdAndDelete(automationId);
 
     return NextResponse.json({
       success: true,
       message: "Automation deleted successfully",
-      data: {
-        deletedAutomation: deletedAutomationData,
-        // subscribersUpdated: subscriberUpdateResult.modifiedCount // Uncomment when Subscriber model is implemented
-      },
+      data: { deletedAutomation: deletedAutomationData },
     });
   } catch (error) {
-    console.error("DELETE Automation Error:", error);
+    console.error("DELETE Flow Error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      },
+      { success: false, message: "Internal server error", error: error.message },
       { status: 500 }
     );
   }
