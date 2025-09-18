@@ -2,7 +2,12 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { Eye, EyeOff, Mail, Trash2, ShieldAlert, Lock, X } from "lucide-react";
-import { Checkbox, inputStyles, labelStyles } from "@/presets/styles";
+import {
+  Checkbox,
+  inputStyles,
+  labelStyles,
+  LoadingSpinner,
+} from "@/presets/styles";
 import { useToastStore } from "@/store/useToastStore";
 import useCustomerStore from "@/store/useCustomerStore";
 import { DropdownSearch } from "@/components/DropdownSearch";
@@ -508,8 +513,7 @@ const ReauthModal = ({
                 Confirm your identity
               </h3>
               <p className="text-xs text-zinc-500">
-                Enter your email and password to delete the selected
-                session(s).
+                Enter your email and password to delete the selected session(s).
               </p>
             </div>
           </div>
@@ -583,7 +587,7 @@ const ReauthModal = ({
 /* MAIN AUTH COMPONENT                                                */
 /* ------------------------------------------------------------------ */
 const CustomerAuth = () => {
-  const router = useRouter()
+  const router = useRouter();
   const { showSuccess } = useToastStore(); // use only showSuccess(message)
   const { login } = useCustomerStore();
 
@@ -726,10 +730,9 @@ const CustomerAuth = () => {
       setInfo("Selected session(s) deleted.");
       setReauthOpen(false);
       safeShowSuccess("cust:sessions:deleted", "Selected session(s) deleted.");
-      
+
       // Switch back to signin mode after successful deletion
       setMode("signin");
-      
     } catch (e) {
       setReauthErrors([e.message || "Deletion failed. Please try again."]);
     } finally {
@@ -797,7 +800,7 @@ const CustomerAuth = () => {
             customer: json.data.customer || null,
             permissions: json.data.permissions || {},
           });
-          router.push("/dashboard")
+          router.push("/dashboard");
         }
         safeShowSuccess("cust:signin", json?.message || "Signed in!");
         setInfo(json?.message || "Signed in.");
@@ -828,7 +831,7 @@ const CustomerAuth = () => {
           );
           setInfo(json?.message || "Account created.");
 
-          router.push("/dashboard")
+          router.push("/dashboard");
         } else {
           setMode("check-email");
           safeShowSuccess(
@@ -917,7 +920,9 @@ const CustomerAuth = () => {
             <h1 className="text-3xl font-bold text-zinc-900 mb-2">
               {config["check-email"]?.header}
             </h1>
-            <p className="text-zinc-600 leading-relaxed">{config["check-email"]?.sub}</p>
+            <p className="text-zinc-600 leading-relaxed">
+              {config["check-email"]?.sub}
+            </p>
           </div>
 
           <div className="rounded-2xl bg-white shadow-xl border border-zinc-200 p-8">
@@ -1071,115 +1076,121 @@ const CustomerAuth = () => {
         {/* Main Card */}
         <div className="rounded-lg bg-white shadow-xl border border-zinc-200 overflow-hidden">
           {/* Tab Navigation */}
-          {mode !== "forgot" && mode !== "check-email" && (
-            <div className="border-b border-zinc-200">
-              <div className="flex">
-                {[
-                  { key: "signin", label: "Sign In" },
-                  { key: "signup", label: "Sign Up" },
-                  { key: "magic", label: "Email Link" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => {
-                      if (!submitLimiterRef.current()) return;
-                      resetFeedback();
-                      setMode(tab.key);
-                    }}
-                    className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-                      mode === tab.key
-                        ? "bg-second text-white border-b-2 border-primary"
-                        : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-100"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Form Content */}
-          <div className="p-8">
-            <div className="space-y-5">
-              <ErrorMessage errors={errors} />
-              <InfoMessage message={!errors.length ? info : ""} />
-
-              {mode === "signin" && (
-                <SignInInputs
-                  email={email}
-                  setEmail={setEmail}
-                  password={password}
-                  setPassword={setPassword}
-                  onForgotPassword={() => {
-                    if (!submitLimiterRef.current()) return;
-                    setMode("forgot");
-                  }}
-                />
-              )}
-
-              {mode === "signup" && (
-                <div className="space-y-5">
-                  <SignUpInputs
-                    email={email}
-                    setEmail={setEmail}
-                    email2={email2}
-                    setEmail2={setEmail2}
-                    password={password}
-                    setPassword={setPassword}
-                    firstName={firstName}
-                    setFirstName={setFirstName}
-                    lastName={lastName}
-                    setLastName={setLastName}
-                    phoneNo={phoneNo}
-                    setPhoneNo={setPhoneNo}
-                    address={address}
-                    setAddress={setAddress}
-                    country={country}
-                    setCountry={setCountry}
-                  />
-                  <TermsCheckbox agree={agree} setAgree={setAgree} />
+          {loading ? (
+            <LoadingSpinner />
+          ) : (
+            <>
+              {mode !== "forgot" && mode !== "check-email" && (
+                <div className="border-b border-zinc-200">
+                  <div className="flex">
+                    {[
+                      { key: "signin", label: "Sign In" },
+                      { key: "signup", label: "Sign Up" },
+                      { key: "magic", label: "Email Link" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => {
+                          if (!submitLimiterRef.current()) return;
+                          resetFeedback();
+                          setMode(tab.key);
+                        }}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                          mode === tab.key
+                            ? "bg-second text-white border-b-2 border-primary"
+                            : "text-zinc-600 hover:text-zinc-800 hover:bg-zinc-100"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {mode === "forgot" && (
-                <ForgotPasswordInputs email={email} setEmail={setEmail} />
-              )}
+              <div className="p-8">
+                <div className="space-y-5">
+                  <ErrorMessage errors={errors} />
+                  <InfoMessage message={!errors.length ? info : ""} />
 
-              {mode === "magic" && (
-                <MagicLinkInputs email={email} setEmail={setEmail} />
-              )}
-
-              <div className="border-t border-zinc-200 pt-5">
-                <button
-                  type="button"
-                  onClick={onSubmit}
-                  disabled={loading}
-                  className="w-64 btn btn-md btn-primary mx-auto disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                      Please wait...
-                    </div>
-                  ) : (
-                    config[mode]?.primaryCta
+                  {mode === "signin" && (
+                    <SignInInputs
+                      email={email}
+                      setEmail={setEmail}
+                      password={password}
+                      setPassword={setPassword}
+                      onForgotPassword={() => {
+                        if (!submitLimiterRef.current()) return;
+                        setMode("forgot");
+                      }}
+                    />
                   )}
-                </button>
-              </div>
 
-              {mode === "forgot" && (
-                <button
-                  type="button"
-                  onClick={() => setMode("signin")}
-                  className="w-full text-center text-sm text-zinc-700 hover:text-zinc-900 underline"
-                >
-                  Back to Sign In
-                </button>
-              )}
-            </div>
-          </div>
+                  {mode === "signup" && (
+                    <div className="space-y-5">
+                      <SignUpInputs
+                        email={email}
+                        setEmail={setEmail}
+                        email2={email2}
+                        setEmail2={setEmail2}
+                        password={password}
+                        setPassword={setPassword}
+                        firstName={firstName}
+                        setFirstName={setFirstName}
+                        lastName={lastName}
+                        setLastName={setLastName}
+                        phoneNo={phoneNo}
+                        setPhoneNo={setPhoneNo}
+                        address={address}
+                        setAddress={setAddress}
+                        country={country}
+                        setCountry={setCountry}
+                      />
+                      <TermsCheckbox agree={agree} setAgree={setAgree} />
+                    </div>
+                  )}
+
+                  {mode === "forgot" && (
+                    <ForgotPasswordInputs email={email} setEmail={setEmail} />
+                  )}
+
+                  {mode === "magic" && (
+                    <MagicLinkInputs email={email} setEmail={setEmail} />
+                  )}
+
+                  <div className="border-t border-zinc-200 pt-5">
+                    <button
+                      type="button"
+                      onClick={onSubmit}
+                      disabled={loading}
+                      className="w-64 btn btn-md btn-primary mx-auto disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {loading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                          Please wait...
+                        </div>
+                      ) : (
+                        config[mode]?.primaryCta
+                      )}
+                    </button>
+                  </div>
+
+                  {mode === "forgot" && (
+                    <button
+                      type="button"
+                      onClick={() => setMode("signin")}
+                      className="w-full text-center text-sm text-zinc-700 hover:text-zinc-900 underline"
+                    >
+                      Back to Sign In
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer */}

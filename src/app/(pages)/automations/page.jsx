@@ -1,149 +1,620 @@
 "use client";
-import { Dropdown } from "@/components/Dropdown";
+import { useState, useCallback, useLayoutEffect, useEffect } from "react";
 import Header from "@/components/Header";
-import SelectModal from "@/components/SelectModal";
 import SidebarWrapper from "@/components/SidebarWrapper";
-import { AnimatePresence, motion } from "framer-motion";
-import { EthernetPort, EthernetPortIcon, KeyRound } from "lucide-react";
-import { useRouter } from "next/navigation";
-import React, {
-  useCallback,
-  useState,
-  useLayoutEffect,
-  useEffect,
-} from "react";
 import {
-  FiCheck,
-  FiEdit,
-  FiGlobe,
+  Checkbox,
+  EmptyState,
+  getUrlParams,
+  inputStyles,
+  LoadingSpinner,
+  TabToggle,
+} from "@/presets/styles";
+import useAdminStore from "@/store/useAdminStore";
+import useCustomerStore from "@/store/useCustomerStore";
+import { useToastStore } from "@/store/useToastStore";
+import {
   FiTrash2,
-  FiX,
-  FiImage,
-  FiChevronRight,
-  FiChevronLeft,
-  FiInfo,
-  FiSettings,
-  FiKey,
-  FiList,
-  FiGrid,
-  FiFilter,
+  FiSearch,
+  FiRefreshCw,
+  FiChevronDown,
+  FiChevronUp,
+  FiEdit,
   FiCopy,
+  FiEye,
 } from "react-icons/fi";
 import { ImSpinner5 } from "react-icons/im";
+import { Dropdown } from "@/components/Dropdown";
+import ConfirmationModal from "@/components/ConfirmationModal";
+import AutomationModal from "./AutomationModal";
+import {
+  fetchWithAuthAdmin,
+  fetchWithAuthCustomer,
+} from "@/helpers/front-end/request";
 
-// Constants
-const STEPS = {
-  BASIC_INFO: 1,
-  SELECT_WEBSITE: 2,
-  SELECT_LIST: 3,
-  REVIEW: 4,
-};
-
-const INITIAL_FORM_DATA = {
-  name: "",
-  description: "",
-  isActive: true,
-  logo: "",
-  websiteId: "",
-  listId: "",
-  keys: {},
-};
-
-const labelStyles = (type) => {
-  const baseStyles = "font-semibold text-zinc-500 uppercase tracking-wider";
-  return type === "mini"
-    ? `text-[0.6rem] ${baseStyles}`
-    : `text-xs ${baseStyles}`;
-};
-
-let inputStyles =
-  "w-full bg-zinc-50 rounded border border-b-2 border-zinc-300 focus:border-primary  px-4 py-2.5 text-zinc-800 outline-none placeholder-zinc-500";
-
-// Toast Component
-const Toast = ({ message, type, show }) => {
-  if (!show) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.3 }}
-      className={`fixed top-4 right-4 p-4 shadow-lg z-50 backdrop-blur-sm border
-                  ${
-                    type === "success"
-                      ? "bg-green-600/90 border-green-500/30"
-                      : "bg-red-600/90 border-red-500/30"
-                  }`}
-    >
-      <div className="flex items-center gap-2 text-white">
-        {type === "success" ? (
-          <FiCheck className="text-lg" />
-        ) : (
-          <FiX className="text-lg" />
-        )}
-        <span>{message}</span>
-      </div>
-    </motion.div>
-  );
-};
-
-// Step Indicator Component
-const StepIndicator = ({ currentStep }) => (
-  <div className="px-5 py-3 bg-zinc-200 border-y border-zinc-300 center-flex">
-    <div className="flex justify-center">
-      {Object.values(STEPS).map((step) => (
-        <div
-          key={step}
-          className={`flex items-center transition-all duration-300 ${
-            currentStep === step ? "text-primary" : "text-zinc-500"
-          }`}
-        >
-          <div
-            className={`w-10 h-10 flex items-center justify-center border rounded transition-all
-                                                ${
-                                                  currentStep === step
-                                                    ? "bg-primary  border-transparent text-white"
-                                                    : currentStep > step
-                                                    ? "bg-green-600 border-transparent text-white"
-                                                    : "  text-zinc-600 border-zinc-400 bg-zinc-100"
-                                                }`}
-          >
-            {currentStep > step ? <FiCheck size={18} /> : step}
-          </div>
-          {step < Object.values(STEPS).length && (
-            <div
-              className={`h-1 w-16 transition-all duration-500 ${
-                currentStep > step
-                  ? "bg-gradient-to-r from-green-600 to-primary"
-                  : "bg-zinc-300"
-              }`}
-            ></div>
-          )}
-        </div>
-      ))}
-    </div>
+/** ---------------- Table primitives (same pattern used by Lists page) ---------------- */
+const Table = ({ children, className = "" }) => (
+  <div
+    className={`w-full min-h-96 bg-white border border-zinc-200 rounded overflow-auto ${className}`}
+  >
+    {children}
   </div>
 );
 
-const AutomationCard = ({
-  automation,
-  websites,
-  lists,
-  onEdit,
-  onDelete,
-  onSteps,
-  isSelected,
-  onSelect,
-  isDeleting,
-  viewMode,
-}) => {
-  const associatedWebsite = websites.find(
-    (w) => w._id === automation.websiteId
-  );
-  const associatedList = lists.find((l) => l._id === automation.listId);
+const TableHeader = ({ children, className = "" }) => (
+  <div
+    className={`w-full bg-zinc-50 border-b border-zinc-200 text-xs uppercase ${className}`}
+  >
+    {children}
+  </div>
+);
 
-  // Format date function
+const TableRow = ({ children, className = "", isSelected = false, onClick }) => (
+  <div
+    className={`border-b border-zinc-100 transition-all ${
+      isSelected ? "bg-blue-50" : ""
+    } ${className}`}
+    onClick={onClick}
+  >
+    {children}
+  </div>
+);
+
+const TableCell = ({ children, className = "", colSpan = 1, onClick }) => (
+  <div
+    className={`p-3 ${className}`}
+    style={{ gridColumn: `span ${colSpan}` }}
+    onClick={onClick}
+  >
+    {children}
+  </div>
+);
+
+const TableBody = ({ children, className = "" }) => (
+  <div className={className}>{children}</div>
+);
+
+/** ---------------- Page ---------------- */
+const Automations = () => {
+  const { showSuccess, showError } = useToastStore();
+  const { admin, token: adminToken } = useAdminStore();
+  const { customer, token: customerToken } = useCustomerStore();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState("create"); // "create" | "edit" | "view"
+
+  const [automations, setAutomations] = useState([]);
+  const [allAutomations, setAllAutomations] = useState([]);
+  const [lists, setLists] = useState([]);
+
+  const [loading, setLoading] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const [editingMiniId, setEditingMiniId] = useState(null);
+  const [urlParams, setUrlParams] = useState({});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [automationToDelete, setAutomationToDelete] = useState(null);
+
+  const [sortConfig, setSortConfig] = useState({
+    key: "createdAt",
+    direction: "desc",
+  });
+
+  // Toolbar state
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [selectedAutomations, setSelectedAutomations] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+  const [searchMode, setSearchMode] = useState("local");
+  const [query, setQuery] = useState("");
+
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    isActive: true,
+    logo: "",
+    listId: "",
+  });
+
+  // Get URL parameters on component mount
+  useEffect(() => {
+    const params = getUrlParams();
+    setUrlParams(params);
+  }, []);
+
+  // Computed
+  const selectedList = lists?.find((l) => l._id === formData.listId);
+  const isEditing = modalMode === "edit";
+  const isViewing = modalMode === "view";
+
+  /** ---------------- API ---------------- */
+  const normalizeAutomationList = useCallback((res) => {
+    // Accept both shapes:
+    // 1) { success, data: { automations: [ { automation: {}, connectedList, customerData, stepsCount } ] } }
+    // 2) { success, data: [ ...plain Automations... ] }
+    const arr = res?.data?.automations ?? res?.data ?? [];
+    return (arr || []).map((entry) => {
+      const a = entry.automation || entry;
+      return {
+        _id: a._id,
+        name: a.name,
+        description: a.description,
+        isActive: a.isActive,
+        logo: a.logo,
+        listId: a.listId || entry?.connectedList?._id || null,
+        customerId: a.customerId || entry?.customerData?._id || null,
+        stepsCount:
+          typeof entry?.stepsCount === "number"
+            ? entry.stepsCount
+            : Array.isArray(a.steps)
+            ? a.steps.length
+            : 0,
+        stats: a.stats,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+      };
+    });
+  }, []);
+
+  const fetchAllData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // GET automations (admin or customer)
+      let autoRes;
+      if (customer && customer._id && customerToken) {
+        autoRes = await fetchWithAuthCustomer({
+          url: "/api/work-flow/flow",
+          method: "GET",
+          customer,
+          token: customerToken,
+        });
+      } else if (admin && admin._id && adminToken) {
+        autoRes = await fetchWithAuthAdmin({
+          url: "/api/work-flow/flow",
+          method: "GET",
+          admin,
+          token: adminToken,
+        });
+      } else {
+        autoRes = await fetch("/api/work-flow/flow").then((r) => r.json());
+      }
+
+      if (!autoRes?.success) throw new Error("Failed to fetch automations.");
+
+      const normalized = normalizeAutomationList(autoRes);
+      setAllAutomations(normalized);
+
+      // Filter by URL param ?customerId=...
+      if (urlParams.customerId) {
+        const filtered = normalized.filter(
+          (a) => a.customerId === urlParams.customerId
+        );
+        setAutomations(filtered);
+      } else {
+        setAutomations(normalized);
+      }
+
+      // Fetch lists for association (admin/customer aware, keep slim)
+      let listsRes;
+      if (customer && customer._id && customerToken) {
+        listsRes = await fetchWithAuthCustomer({
+          url: "/api/list?notConnected=false",
+          method: "GET",
+          customer,
+          token: customerToken,
+        });
+      } else if (admin && admin._id && adminToken) {
+        listsRes = await fetchWithAuthAdmin({
+          url: "/api/list?notConnected=false",
+          method: "GET",
+          admin,
+          token: adminToken,
+        });
+      } else {
+        listsRes = await fetch("/api/list?notConnected=false").then((r) =>
+          r.json()
+        );
+      }
+
+      if (listsRes?.success) {
+        setLists(listsRes.data || []);
+      } else {
+        setLists([]);
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      showError("Failed to fetch data. Please try again.");
+      setAutomations([]);
+      setAllAutomations([]);
+      setLists([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    admin,
+    adminToken,
+    customer,
+    customerToken,
+    urlParams.customerId,
+    showError,
+    normalizeAutomationList,
+  ]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedAutomations.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      // This API doesn't expose a bulk delete; perform sequential deletes.
+      const runDelete = async (id) => {
+        if (customer && customer._id && customerToken) {
+          return fetchWithAuthCustomer({
+            url: `/api/work-flow/flow?automationId=${id}`,
+            method: "DELETE",
+            customer,
+            token: customerToken,
+          });
+        } else if (admin && admin._id && adminToken) {
+          return fetchWithAuthAdmin({
+            url: `/api/work-flow/flow?automationId=${id}`,
+            method: "DELETE",
+            admin,
+            token: adminToken,
+          });
+        } else {
+          return fetch(`/api/work-flow/flow?automationId=${id}`, {
+            method: "DELETE",
+          }).then((r) => r.json());
+        }
+      };
+
+      const results = await Promise.allSettled(
+        selectedAutomations.map((id) => runDelete(id))
+      );
+      const okCount = results.filter(
+        (r) => r.status === "fulfilled" && r.value?.success
+      ).length;
+
+      showSuccess(
+        okCount === selectedAutomations.length
+          ? `${okCount} automations deleted successfully!`
+          : `${okCount}/${selectedAutomations.length} automations deleted.`
+      );
+      setSelectedAutomations([]);
+      setSelectAll(false);
+      setShowBulkDeleteConfirm(false);
+      await fetchAllData();
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      showError(error.message || "An error occurred while deleting automations");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [
+    selectedAutomations,
+    admin,
+    adminToken,
+    customer,
+    customerToken,
+    fetchAllData,
+    showSuccess,
+    showError,
+  ]);
+
+  const handleSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+      setModalLoading(true);
+
+      const method = isEditing ? "PUT" : "POST";
+      const url = "/api/work-flow/flow";
+
+      // Build payloads:
+      const baseData = {
+        name: formData.name,
+        description: formData.description,
+        isActive: formData.isActive,
+        logo: formData.logo,
+        listId: formData.listId || null,
+      };
+
+      const payload = isEditing
+        ? {
+            automationId: editingMiniId,
+            status: "multi",
+            updateData: {
+              ...baseData,
+              // Ownership change is admin-only; here we only set during create (below)
+            },
+          }
+        : {
+            ...baseData,
+            // If customer is present, include owner automatically
+            customerId: customer?._id || null,
+          };
+
+      try {
+        const headers = {
+          "Content-Type": "application/json",
+          ...(customer && customerToken && { "mailer-auth-token": customerToken }),
+          ...(admin && adminToken && { "mailer-auth-token": adminToken }),
+        };
+
+        const response = await fetch(url, {
+          method,
+          headers,
+          body: JSON.stringify(payload),
+        });
+
+        const json = await response.json();
+        if (!response.ok || !json?.success) {
+          throw new Error(json?.message || "Failed to save automation.");
+        }
+
+        setFormData({
+          name: "",
+          description: "",
+          isActive: true,
+          logo: "",
+          listId: "",
+        });
+        setIsModalOpen(false);
+        setEditingMiniId(null);
+        setModalMode("create");
+        showSuccess(
+          isEditing
+            ? "Automation updated successfully!"
+            : "Automation created successfully!"
+        );
+        await fetchAllData();
+      } catch (error) {
+        console.error("Submission error:", error);
+        showError(error.message || "An error occurred while saving the automation");
+      } finally {
+        setModalLoading(false);
+      }
+    },
+    [
+      formData,
+      editingMiniId,
+      isEditing,
+      fetchAllData,
+      showSuccess,
+      showError,
+      admin,
+      adminToken,
+      customer,
+      customerToken,
+    ]
+  );
+
+  const handleDelete = useCallback(async () => {
+    if (!automationToDelete) return;
+    try {
+      let response;
+      if (customer && customer._id && customerToken) {
+        response = await fetchWithAuthCustomer({
+          url: `/api/work-flow/flow?automationId=${automationToDelete._id}`,
+          method: "DELETE",
+          customer,
+          token: customerToken,
+        });
+      } else if (admin && admin._id && adminToken) {
+        response = await fetchWithAuthAdmin({
+          url: `/api/work-flow/flow?automationId=${automationToDelete._id}`,
+          method: "DELETE",
+          admin,
+          token: adminToken,
+        });
+      } else {
+        response = await fetch(
+          `/api/work-flow/flow?automationId=${automationToDelete._id}`,
+          { method: "DELETE" }
+        ).then((r) => r.json());
+      }
+
+      if (!response?.success)
+        throw new Error(response?.message || "Failed to delete automation.");
+
+      showSuccess(response?.message || "Automation deleted successfully!");
+      setShowDeleteConfirm(false);
+      setAutomationToDelete(null);
+      await fetchAllData();
+    } catch (error) {
+      console.error("Deletion error:", error);
+      showError(error.message);
+    }
+  }, [
+    automationToDelete,
+    fetchAllData,
+    showSuccess,
+    showError,
+    admin,
+    adminToken,
+    customer,
+    customerToken,
+  ]);
+
+  /** ---------------- Handlers ---------------- */
+  const handleOpenModal = useCallback(async () => {
+    setIsModalOpen(true);
+    setModalMode("create");
+    setEditingMiniId(null);
+    setFormData({
+      name: "",
+      description: "",
+      isActive: true,
+      logo: "",
+      listId: "",
+    });
+
+    // Preload lists for selection
+    setModalLoading(true);
+    try {
+      let res;
+      if (customer && customer._id && customerToken) {
+        res = await fetchWithAuthCustomer({
+          url: "/api/list?notConnected=false",
+          method: "GET",
+          customer,
+          token: customerToken,
+        });
+      } else if (admin && admin._id && adminToken) {
+        res = await fetchWithAuthAdmin({
+          url: "/api/list?notConnected=false",
+          method: "GET",
+          admin,
+          token: adminToken,
+        });
+      } else {
+        res = await fetch("/api/list?notConnected=false").then((r) => r.json());
+      }
+      if (res?.success) setLists(res.data || []);
+    } catch (error) {
+      console.error("Error fetching lists:", error);
+      showError(error.message || "Failed to fetch lists");
+    } finally {
+      setModalLoading(false);
+    }
+  }, [customer, customerToken, admin, adminToken, showError]);
+
+  const handleEdit = useCallback((automation) => {
+    setEditingMiniId(automation._id);
+    setModalMode("edit");
+    setFormData({
+      name: automation.name,
+      description: automation.description || "",
+      isActive: !!automation.isActive,
+      logo: automation.logo || "",
+      listId: automation.listId || "",
+    });
+    setIsModalOpen(true);
+  }, []);
+
+  const handleView = useCallback((automation) => {
+    setEditingMiniId(automation._id);
+    setModalMode("view");
+    setFormData({
+      name: automation.name,
+      description: automation.description || "",
+      isActive: !!automation.isActive,
+      logo: automation.logo || "",
+      listId: automation.listId || "",
+    });
+    setIsModalOpen(true);
+  }, []);
+
+  const handleDeleteClick = useCallback((automation) => {
+    setAutomationToDelete(automation);
+    setShowDeleteConfirm(true);
+  }, []);
+
+  const handleListConfirm = useCallback(
+    (selection) => {
+      setFormData((prev) => ({
+        ...prev,
+        listId: selection[0] || "",
+      }));
+    },
+    [setFormData]
+  );
+
+  const handleInputChange = useCallback((e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  }, []);
+
+  // Sort function for header clicks
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Filter and sort client-side (same pattern as Lists page)
+  const getFilteredAndSortedAutomations = useCallback(() => {
+    let filtered = [...automations];
+
+    // status filter
+    if (filterStatus !== "all") {
+      filtered = filtered.filter((a) =>
+        filterStatus === "active" ? a.isActive : !a.isActive
+      );
+    }
+
+    // search
+    if (query) {
+      const term = query.toLowerCase();
+      filtered = filtered.filter(
+        (a) =>
+          a.name.toLowerCase().includes(term) ||
+          (a.description && a.description.toLowerCase().includes(term))
+      );
+    }
+
+    // sort
+    filtered.sort((a, b) => {
+      let aValue, bValue;
+      if (sortConfig.key === "stepsCount") {
+        aValue = a.stepsCount || 0;
+        bValue = b.stepsCount || 0;
+      } else {
+        aValue = a[sortConfig.key];
+        bValue = b[sortConfig.key];
+      }
+
+      if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [automations, filterStatus, sortConfig, query]);
+
+  const handleSelectAutomation = (id) => {
+    setSelectedAutomations((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    const filtered = getFilteredAndSortedAutomations();
+    if (selectAll) {
+      setSelectedAutomations([]);
+      setSelectAll(false);
+    } else {
+      setSelectedAutomations(filtered.map((a) => a._id));
+      setSelectAll(true);
+    }
+  };
+
+  useEffect(() => {
+    const filtered = getFilteredAndSortedAutomations();
+    if (filtered.length === 0) {
+      setSelectAll(false);
+    } else {
+      const allSelected = filtered.every((a) =>
+        selectedAutomations.includes(a._id)
+      );
+      setSelectAll(allSelected);
+    }
+  }, [selectedAutomations, getFilteredAndSortedAutomations]);
+
+  // Effects
+  useLayoutEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  const clearSelection = () => {
+    setSelectedAutomations([]);
+    setSelectAll(false);
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -154,843 +625,10 @@ const AutomationCard = ({
     });
   };
 
-  // Mini card component
-  const MiniCard = ({ title, subLine }) => {
-    return (
-      <div className="w-full flex items-center gap-2">
-        <div className="w-[1px] h-full min-h-10 bg-zinc-400 rounded" />
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm text-primary">{title}</h2>
-          <p className="text-xs text-zinc-500">{subLine}</p>
-        </div>
-      </div>
-    );
-  };
+  const filteredAutomations = getFilteredAndSortedAutomations();
 
-  return (
-    <div
-      className={`rounded border transition-all duration-200 gap-6 p-6 relative ${
-        isSelected
-          ? "bg-zinc-50 border-y-2 border-primary"
-          : "bg-zinc-50 hover:border-zinc-300"
-      }`}
-    >
-      {isSelected && (
-        <div className="absolute -top-3 right-1 bg-primary text-white text-xs px-2 py-1 rounded uppercase tracking-wider transition-all">
-          Selected
-        </div>
-      )}
-      {/* Selection checkbox */}
-      {onSelect && (
-        <div className="absolute top-4 right-4 z-10">
-          <div
-            onClick={() => onSelect(automation._id)}
-            className={`w-6 h-6 rounded border cursor-pointer transition-all duration-200 flex items-center justify-center
-              ${
-                isSelected
-                  ? "bg-primary border-primary"
-                  : "border-zinc-300 hover:border-primary"
-              }`}
-          >
-            {isSelected && (
-              <svg
-                className="w-4 h-4 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div
-        className={`${
-          viewMode === "double"
-            ? "flex flex-col items-start"
-            : "flex items-start xl:items-center flex-col xl:flex-row xl:justify-between"
-        } gap-6`}
-      >
-        <div className="flex flex-col xl:flex-row items-center gap-3 md:gap-5 xl:divide-x">
-          <div className="bg-zinc-100 border rounded-md overflow-hidden w-full max-w-28 h-32">
-            {automation.logo ? (
-              <img
-                src={automation.logo}
-                alt={`${automation.name} logo`}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src = `https://placehold.co/80x80/efefef/999999?text=${automation.name
-                    .charAt(0)
-                    .toUpperCase()}`;
-                }}
-              />
-            ) : (
-              <div className="w-full h-full bg-zinc-100 flex items-center justify-center">
-                <EthernetPortIcon className="text-zinc-400 w-8 h-8" />
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col xl:pl-4">
-            <div
-              className={`w-fit text-xxs px-2 py-0.5 rounded border ${
-                automation.isActive
-                  ? "bg-green-200 border-green-500 text-zinc-800"
-                  : "bg-red-200 border-red-500 text-red-900"
-              }`}
-            >
-              {automation.isActive ? "Currently Active" : "Currently Inactive"}
-            </div>
-            <button
-              onClick={() => onSteps(automation)}
-              className="text-lg text-zinc-700 font-medium mt-1 hover:underline text-left"
-            >
-              {automation.name}
-            </button>
-
-            <div className="flex items-center gap-3 mb-2">
-              <div className="flex items-center gap-2 border border-zinc-200 p-1 px-2 rounded bg-zinc-50">
-                <div className="flex items-center gap-1">
-                  <h2 className="text-xxs uppercase text-primary">
-                    {associatedWebsite ? "Website" : "Not Connected"} :
-                  </h2>
-                  <p className="text-xs text-zinc-600">{`${
-                    associatedWebsite ? "Conneted" : "None"
-                  }`}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 border border-zinc-200 p-1 px-2 rounded bg-zinc-50">
-                <div className="flex items-center gap-1">
-                  <h2 className="text-xxs uppercase text-primary">
-                    {associatedList ? "List" : "Not Connected"} :
-                  </h2>
-                  <p className="text-xs text-zinc-600">{`List: ${
-                    associatedList ? "Connected" : "None"
-                  }`}</p>
-                </div>
-              </div>
-            </div>
-
-            <Dropdown
-              position="bottom"
-              options={[
-                {
-                  value: "steps",
-                  label: (
-                    <div className="flex items-center gap-2 w-full">
-                      <FiSettings />
-                      Manage Work-Flow
-                    </div>
-                  ),
-                },
-                {
-                  value: "edit",
-                  label: (
-                    <div className="flex items-center gap-2 w-full">
-                      <FiEdit />
-                      Edit Automation
-                    </div>
-                  ),
-                },
-                {
-                  value: "copy",
-                  label: (
-                    <div className="flex items-center gap-2 w-full">
-                      <FiCopy />
-                      Copy Automation Id
-                    </div>
-                  ),
-                },
-                {
-                  value: "delete",
-                  label: (
-                    <div className="flex items-center gap-2 w-full">
-                      {isDeleting ? (
-                        <ImSpinner5 className="animate-spin" />
-                      ) : (
-                        <FiTrash2 />
-                      )}
-                      Delete Automation
-                    </div>
-                  ),
-                },
-              ]}
-              placeholder="Actions Menu"
-              onChange={(val) => {
-                if (val === "steps") onSteps(automation);
-                if (val === "edit") onEdit(automation);
-                if (val === "delete") onDelete(automation);
-                if (val === "copy")
-                  navigator.clipboard.writeText(automation._id);
-              }}
-              disabled={isDeleting}
-              className="w-48"
-            />
-          </div>
-        </div>
-
-        <div
-          className={`flex-1 w-full grid gap-3 ${
-            viewMode === "double" ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-4"
-          }`}
-        >
-          <MiniCard
-            title="Total Steps"
-            subLine={`Count: ${automation?.steps?.length || 0}`}
-          />
-          <MiniCard
-            title="Last Updated"
-            subLine={formatDate(automation.updatedAt)}
-          />
-          <MiniCard
-            title="Added On"
-            subLine={formatDate(automation.createdAt)}
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Form Steps Components
-const BasicInfoStep = ({ formData, onChange }) => (
-  <motion.div
-    key="step1"
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    transition={{ duration: 0.3 }}
-    className="space-y-6"
-  >
-    <h3 className="text-lg tracking-wide  text-zinc-800 mb-4 flex items-center gap-2">
-      <div className="p-2 bg-primary text-white rounded">
-        <EthernetPort className="w-5 h-5" />
-      </div>
-      Basic Configuration
-    </h3>
-
-    <div>
-      <label className={labelStyles("base")}>Name</label>
-      <input
-        type="text"
-        name="name"
-        value={formData.name}
-        onChange={onChange}
-        className={inputStyles}
-        required
-        placeholder="e.g., 'New User Onboarding Flow'"
-      />
-    </div>
-
-    <div>
-      <label className={labelStyles("base")}>Description</label>
-      <textarea
-        name="description"
-        value={formData.description}
-        onChange={onChange}
-        rows="3"
-        className={inputStyles}
-        placeholder="Describe what this automation does..."
-      />
-    </div>
-
-    <div className="flex flex-col sm:flex-row gap-6 items-start">
-      <div className="flex-1 w-full">
-        <label htmlFor="logoUrl" className={labelStyles("base")}>
-          Image URL
-        </label>
-        <input
-          id="logoUrl"
-          type="url"
-          name="logo"
-          value={formData.logo}
-          onChange={onChange}
-          className={inputStyles}
-          placeholder="https://example.com/logo.png"
-        />
-      </div>
-      <div className="flex flex-col items-center">
-        <label className="block text-sm font-medium text-zinc-700 mb-2">
-          Preview
-        </label>
-        <div className="w-24 h-24 bg-zinc-100 border-2 border-dashed border-zinc-300 center-flex overflow-hidden">
-          {formData.logo ? (
-            <img
-              src={formData.logo}
-              alt="Logo Preview"
-              className="w-full h-full object-contain p-2"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src =
-                  "https://placehold.co/40x40/E2E8F0/334155?text=Logo";
-              }}
-            />
-          ) : (
-            <FiImage className="text-zinc-400 w-10 h-10" />
-          )}
-        </div>
-      </div>
-    </div>
-
-    <div className="bg-white border border-zinc-300 p-6 rounded">
-      <h3 className="tracking-wide  text-zinc-800 mb-4 flex items-center gap-2">
-        <div className="p-2 bg-primary text-white rounded">
-          <FiSettings className="w-5 h-5" />
-        </div>
-        Automation Status
-      </h3>
-
-      <div className="flex items-center gap-4">
-        <label
-          htmlFor="isActiveToggle"
-          className="relative inline-flex items-center cursor-pointer"
-        >
-          <input
-            id="isActiveToggle"
-            type="checkbox"
-            name="isActive"
-            checked={formData.isActive}
-            onChange={onChange}
-            className="sr-only peer"
-          />
-          <div className="w-12 h-6 bg-zinc-300 peer-focus:outline-none  peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after: after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-        </label>
-        <div>
-          <p className="text-sm  text-zinc-800">
-            {formData.isActive ? "Active" : "Inactive"}
-          </p>
-          <p className="text-xs text-zinc-600">
-            {formData.isActive
-              ? "This website is currently active"
-              : "This website is disabled"}
-          </p>
-        </div>
-      </div>
-    </div>
-  </motion.div>
-);
-
-const SelectionStep = ({
-  stepKey,
-  selectedItem,
-  onSelectionChange,
-  onOpenModal,
-  title,
-  icon: Icon,
-  noSelectionText,
-}) => (
-  <motion.div
-    key={stepKey}
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    transition={{ duration: 0.3 }}
-    className="space-y-4"
-  >
-    <h3 className="text-lg tracking-wide  text-zinc-800 mb-4 flex items-center gap-2">
-      <div className="p-2 bg-primary text-white rounded">
-        <Icon className="w-5 h-5" />
-      </div>
-      {title}
-    </h3>
-
-    <p className="text-primary text-sm mb-4 bg-zinc-50 rounded py-1.5 px-2.5">
-      Choose which portals this website can access.
-    </p>
-    <button
-      type="button"
-      onClick={onOpenModal}
-      className="w-full btn btn-sm xl:btn-md btn-primary center-flex gap-2"
-    >
-      {title}
-    </button>
-
-    {selectedItem && (
-      <div className="mt-4 bg-white border border-zinc-300 rounded p-3">
-        <p className="text-sm text-zinc-800 mb-4">Currently Selected :</p>
-        <div className="flex flex-wrap gap-2">
-          <span className="bg-white border border-y-2 border-zinc-200 text-zinc-700 px-3 py-2 text-sm relative">
-            <div className="absolute -top-2 right-1 bg-primary text-white text-xs w-4 h-4 center-flex">
-              1
-            </div>
-            {selectedItem.name}
-          </span>
-        </div>
-      </div>
-    )}
-  </motion.div>
-);
-
-const ReviewStep = ({ formData, selectedWebsite, selectedList }) => (
-  <motion.div
-    key="step4"
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    transition={{ duration: 0.3 }}
-    className="flex flex-col"
-  >
-    <div>
-      <h3 className="text-xl text-zinc-800 text-center">
-        Review Automation Details
-      </h3>
-      <p className="text-zinc-600 mb-10 text-center">
-        Please review all the details before confirming.
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* General Info */}
-        <div className="space-y-4">
-          <h4 className="text-lg  text-zinc-800 flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 center-flex bg-primary text-white rounded">
-              <FiInfo />
-            </div>
-            General Information
-          </h4>
-
-          <div className="bg-zinc-50 border border-zinc-300 rounded p-4">
-            <p className="text-sm text-zinc-600">Name:</p>
-            <p className="text-zinc-800 font-medium">
-              {formData.name || "N/A"}
-            </p>
-          </div>
-
-          <div className="bg-zinc-50 border border-zinc-300 rounded p-4">
-            <p className="text-sm text-zinc-600">Description:</p>
-            <p className="text-zinc-800 break-all">
-              {formData.description || "N/A"}
-            </p>
-          </div>
-
-          <div className="bg-zinc-50 border border-zinc-300 rounded p-4">
-            <p className="text-sm text-zinc-600">Logo:</p>
-            {formData.logo ? (
-              <img
-                src={formData.logo}
-                alt="Logo Preview"
-                className="w-20 h-20 object-contain p-1 border border-zinc-300 bg-zinc-200"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src =
-                    "https://placehold.co/40x40/E2E8F0/334155?text=Logo";
-                }}
-              />
-            ) : (
-              <p className="text-zinc-500">No logo set</p>
-            )}
-          </div>
-
-          <div className="bg-zinc-50 border border-zinc-300 rounded p-4">
-            <p className="text-sm text-zinc-600">Status:</p>
-            <span
-              className={`px-3 py-1 text-xs font-medium ${
-                formData.isActive
-                  ? "bg-green-600 text-white"
-                  : "bg-red-600 text-white"
-              }`}
-            >
-              {formData.isActive ? "Active" : "Inactive"}
-            </span>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <h4 className="text-lg  text-zinc-800 flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 center-flex bg-primary text-white rounded">
-              <FiKey />
-            </div>
-            Associations Information
-          </h4>
-
-          <div className="bg-zinc-50 border border-zinc-300 rounded p-4">
-            <p className="text-sm text-zinc-600 mb-2">Associated Website:</p>
-            {selectedWebsite ? (
-              <span className="px-3 py-1 bg-purple-200 text-purple-800 text-xs">
-                {selectedWebsite.name}
-              </span>
-            ) : (
-              <p className="text-zinc-500">None</p>
-            )}
-          </div>
-
-          <div className="bg-zinc-50 border border-zinc-300 rounded p-4">
-            <p className="text-sm text-zinc-600 mb-2">Associated List:</p>
-            {selectedList ? (
-              <span className="px-3 py-1 bg-purple-200 text-purple-800 text-xs">
-                {selectedList.name}
-              </span>
-            ) : (
-              <p className="text-zinc-500">None</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  </motion.div>
-);
-
-// Custom Hooks
-const useToast = () => {
-  const [toast, setToast] = useState({ show: false, message: "", type: "" });
-
-  const showToast = useCallback((message, type) => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: "", type: "" }), 3000);
-  }, []);
-
-  return { toast, showToast };
-};
-
-const useFormData = () => {
-  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
-
-  const handleInputChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  }, []);
-
-  const resetForm = useCallback(() => {
-    setFormData(INITIAL_FORM_DATA);
-  }, []);
-
-  const setFormDataFromAutomation = useCallback((automation) => {
-    setFormData({
-      name: automation.name,
-      description: automation.description,
-      isActive: automation.isActive,
-      logo: automation.logo,
-      websiteId: automation.websiteId || "",
-      listId: automation.listId || "",
-      keys: automation.keys || {},
-    });
-  }, []);
-
-  return {
-    formData,
-    setFormData,
-    handleInputChange,
-    resetForm,
-    setFormDataFromAutomation,
-  };
-};
-
-// Main Component
-const Automations = () => {
-  const router = useRouter();
-  // State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [websites, setWebsites] = useState([]);
-  const [lists, setLists] = useState([]);
-  const [automations, setAutomations] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [currentStep, setCurrentStep] = useState(STEPS.BASIC_INFO);
-  const [editingMiniId, setEditingMiniId] = useState(null);
-  const [isWebsiteModalOpen, setIsWebsiteModalOpen] = useState(false);
-  const [isListModalOpen, setIsListModalOpen] = useState(false);
-
-  // Filter and layout states
-  const [viewMode, setViewMode] = useState("single"); // 'single' or 'double'
-  const [sortBy, setSortBy] = useState("newest"); // 'newest', 'oldest', 'name-asc', 'name-desc'
-  const [filterStatus, setFilterStatus] = useState("all"); // 'all', 'active', 'inactive'
-  const [selectedAutomations, setSelectedAutomations] = useState([]);
-  const [selectAll, setSelectAll] = useState(false);
-
-  // Custom hooks
-  const { toast, showToast } = useToast();
-  const {
-    formData,
-    setFormData,
-    handleInputChange,
-    resetForm,
-    setFormDataFromAutomation,
-  } = useFormData();
-
-  // Computed values
-  const selectedWebsite = websites?.find((w) => w._id === formData.websiteId);
-  const selectedList = lists?.find((l) => l._id === formData.listId);
-  const isEditing = editingMiniId;
-
-  // Filter and sorting functions
-  const getFilteredAndSortedAutomations = useCallback(() => {
-    let filtered = [...automations];
-
-    // Apply status filter
-    if (filterStatus !== "all") {
-      filtered = filtered.filter((automation) =>
-        filterStatus === "active" ? automation.isActive : !automation.isActive
-      );
-    }
-
-    // Apply sorting
-    switch (sortBy) {
-      case "newest":
-        filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        break;
-      case "oldest":
-        filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        break;
-      case "name-asc":
-        filtered.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case "name-desc":
-        filtered.sort((a, b) => b.name.localeCompare(a.name));
-        break;
-      default:
-        break;
-    }
-
-    return filtered;
-  }, [automations, filterStatus, sortBy]);
-
-  // Selection handlers
-  const handleSelectAutomation = (automationId) => {
-    setSelectedAutomations((prev) => {
-      if (prev.includes(automationId)) {
-        return prev.filter((id) => id !== automationId);
-      } else {
-        return [...prev, automationId];
-      }
-    });
-  };
-
-  const handleSelectAll = () => {
-    const filteredAutomations = getFilteredAndSortedAutomations();
-    if (selectAll) {
-      setSelectedAutomations([]);
-      setSelectAll(false);
-    } else {
-      setSelectedAutomations(filteredAutomations.map((a) => a._id));
-      setSelectAll(true);
-    }
-  };
-
-  // Update selectAll state when automations change
-  useEffect(() => {
-    const filteredAutomations = getFilteredAndSortedAutomations();
-    if (filteredAutomations.length === 0) {
-      setSelectAll(false);
-    } else {
-      const allSelected = filteredAutomations.every((a) =>
-        selectedAutomations.includes(a._id)
-      );
-      setSelectAll(allSelected);
-    }
-  }, [selectedAutomations, getFilteredAndSortedAutomations]);
-
-  // API Functions
-  const fetchAllData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [websitesRes, listsRes, automationsRes] = await Promise.all([
-        fetch("/api/website"),
-        fetch("/api/list?notConnected=false"),
-        fetch("/api/automation"),
-      ]);
-
-      if (!websitesRes.ok || !listsRes.ok || !automationsRes.ok) {
-        throw new Error("Failed to fetch data from one or more endpoints.");
-      }
-
-      const [websitesData, listsData, automationsData] = await Promise.all([
-        websitesRes.json(),
-        listsRes.json(),
-        automationsRes.json(),
-      ]);
-
-      setWebsites(websitesData.data || []);
-      setLists(listsData.data || []);
-      setAutomations(automationsData.data || []);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      showToast("Failed to fetch data. Please try again.", "error");
-      setWebsites([]);
-      setLists([]);
-      setAutomations([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
-
-  const handleSubmit = useCallback(
-    async (e) => {
-      e.preventDefault();
-      setModalLoading(true);
-
-      const method = isEditing ? "PUT" : "POST";
-      let url = "/api/work-flow/flow";
-
-      try {
-        let reqPayload;
-        if (isEditing) {
-          reqPayload = {
-            automationId: editingMiniId,
-            updateData: formData,
-            status: "multi",
-          };
-        } else {
-          reqPayload = {
-            automationId: editingMiniId,
-            ...formData,
-          };
-        }
-        const response = await fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(reqPayload),
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Failed to save automation.");
-        }
-
-        resetForm();
-        setIsModalOpen(false);
-        setEditingMiniId(null);
-        showToast(
-          isEditing
-            ? "Automation updated successfully!"
-            : "Automation created successfully!",
-          "success"
-        );
-        await fetchAllData();
-      } catch (error) {
-        console.error("Submission error:", error);
-        showToast(error.message || "Failed to save automation", "error");
-      } finally {
-        setModalLoading(false);
-      }
-    },
-    [formData, editingMiniId, isEditing, showToast, resetForm, fetchAllData]
-  );
-
-  const handleDelete = useCallback(
-    async (automation) => {
-      if (
-        !window.confirm(
-          `Are you sure you want to delete the automation "${automation.name}"?`
-        )
-      ) {
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/work-flow/flow?automationId=${automation._id}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        if (!response.ok) throw new Error("Failed to delete automation.");
-
-        showToast("Automation deleted successfully!", "success");
-        await fetchAllData();
-      } catch (error) {
-        console.error("Deletion error:", error);
-        showToast(error.message, "error");
-      }
-    },
-    [showToast, fetchAllData]
-  );
-
-  // Event Handlers
-  const handleOpenModal = useCallback(() => {
-    setIsModalOpen(true);
-    setCurrentStep(STEPS.BASIC_INFO);
-    setEditingMiniId(null);
-    resetForm();
-  }, [resetForm]);
-
-  const handleEdit = useCallback(
-    (automation) => {
-      setEditingMiniId(automation._id);
-      setFormDataFromAutomation(automation);
-      setIsModalOpen(true);
-      setCurrentStep(STEPS.BASIC_INFO);
-    },
-    [setFormDataFromAutomation]
-  );
-
-  const handleWebsiteConfirm = useCallback(
-    (selection) => {
-      setFormData((prev) => ({ ...prev, websiteId: selection[0] || "" }));
-      setIsWebsiteModalOpen(false);
-      setCurrentStep(STEPS.SELECT_LIST);
-    },
-    [setFormData]
-  );
-
-  const handleListConfirm = useCallback(
-    (selection) => {
-      setFormData((prev) => ({ ...prev, listId: selection[0] || "" }));
-      setIsListModalOpen(false);
-      setCurrentStep(STEPS.REVIEW);
-    },
-    [setFormData]
-  );
-
-  const handleStepValidation = useCallback(
-    (step) => {
-      switch (step) {
-        case STEPS.BASIC_INFO:
-          if (!formData.name) {
-            showToast("Please enter a name for the automation.", "error");
-            return false;
-          }
-          break;
-        case STEPS.SELECT_WEBSITE:
-          if (!formData.websiteId) {
-            showToast("Please select a website.", "error");
-            return false;
-          }
-          break;
-        default:
-          break;
-      }
-      return true;
-    },
-    [formData.name, formData.websiteId, formData.listId, showToast]
-  );
-
-  const handleNextStep = useCallback(() => {
-    if (handleStepValidation(currentStep)) {
-      setCurrentStep((prev) => prev + 1);
-    }
-  }, [currentStep, handleStepValidation]);
-
-  const handlePrevStep = useCallback(() => {
-    setCurrentStep((prev) => Math.max(STEPS.BASIC_INFO, prev - 1));
-  }, []);
-
-  // Effects
-  useLayoutEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
-
-  const onSteps = (automation) => {
-    if (automation?._id) {
-      router.push(`/automations/working?automationId=${automation._id}`);
-    }
-  };
   return (
     <SidebarWrapper>
-      <AnimatePresence>
-        <Toast {...toast} />
-      </AnimatePresence>
-
       <Header
         title="Automations & Work Flows"
         buttonText="Create New Automation"
@@ -998,365 +636,390 @@ const Automations = () => {
         subtitle="Manage your automations and work flows"
       />
 
-      {/* Filter and Selection Controls */}
-      <div className="w-full bg-zinc-50 border px-4 p-2 rounded mb-4">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Left side - Filters */}
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            {/* View Mode Toggle */}
-            <div className="center-flex gap-2">
-              <div className="flex bg-zinc-200 rounded overflow-hidden p-1">
-                <button
-                  onClick={() => setViewMode("single")}
-                  className={`p-2 text-sm transition-all rounded-full ${
-                    viewMode === "single"
-                      ? "bg-white text-primary"
-                      : "text-zinc-600 hover:text-zinc-800"
-                  }`}
-                >
-                  <FiList size={16} />
-                </button>
-                <button
-                  onClick={() => setViewMode("double")}
-                  className={`p-2 text-sm transition-all rounded-full ${
-                    viewMode === "double"
-                      ? "bg-white text-primary"
-                      : "text-zinc-600 hover:text-zinc-800"
-                  }`}
-                >
-                  <FiGrid size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* Sort Dropdown */}
-            <div className="relative">
-              <Dropdown
-                options={[
-                  { value: "newest", label: "Newest First" },
-                  { value: "oldest", label: "Oldest First" },
-                  { value: "name-asc", label: "Name A-Z" },
-                  { value: "name-desc", label: "Name Z-A" },
-                ]}
-                value={sortBy}
-                onChange={setSortBy}
-                placeholder="Sort by"
-                className="w-40"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <div className="relative">
-              <Dropdown
-                options={[
-                  { value: "all", label: "All Status" },
-                  { value: "active", label: "Active Only" },
-                  { value: "inactive", label: "Inactive Only" },
-                ]}
-                value={filterStatus}
-                onChange={setFilterStatus}
-                placeholder="Filter by status"
-                className="w-40"
+      {/* Primary actions + search/filters */}
+      <div className="bg-white border border-zinc-200 rounded p-3 mb-3">
+        <div className="flex flex-col md:flex-row gap-3 md:items-center">
+          <div className="flex-1 flex gap-2">
+            <div className="flex-1 relative">
+              <FiSearch className="absolute left-3 top-2.5 text-zinc-400" />
+              <input
+                aria-label="Search automations"
+                className={`pl-9 ${inputStyles}`}
+                placeholder="Search automations by name or description..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
               />
             </div>
           </div>
 
-          {/* Right side - Selection and Actions */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            {/* Selection Info */}
-            <div className="flex items-center gap-3">
-              <div
-                onClick={handleSelectAll}
-                className="text-sm text-primary cursor-pointer"
-              >
-                Select All
-              </div>
-              <div
-                onClick={handleSelectAll}
-                className={`w-6 h-6 rounded border cursor-pointer transition-all duration-200 flex items-center justify-center
-                                ${
-                                  selectedAutomations.length > 0
-                                    ? "bg-primary border-primary"
-                                    : "border-zinc-300 hover:border-primary"
-                                }`}
-              >
-                {selectedAutomations.length > 0 && (
-                  <svg
-                    className="w-4 h-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                )}
-              </div>
+          <Dropdown
+            position="bottom"
+            options={[
+              { value: "local", label: <div className="flex items-center gap-2 w-full">Local Search</div> },
+              { value: "live", label: <div className="flex items-center gap-2 w-full">Live Search</div> },
+            ]}
+            placeholder="Search Mode"
+            onChange={(val) => setSearchMode(val)}
+            value={searchMode}
+            className="w-48"
+          />
 
-              {/* Bulk Actions */}
-              {selectedAutomations.length > 0 && (
-                <div className="flex items-center gap-2 pl-3 border-l border-zinc-200">
-                  <span className="text-xs text-zinc-500">Actions:</span>
-                  <button
-                    onClick={() => {
-                      console.log("Bulk delete:", selectedAutomations);
-                    }}
-                    className="btn btn-sm hover:bg-red-500 rounded hover:text-white"
-                  >
-                    Delete ({selectedAutomations.length})
-                  </button>
-                </div>
-              )}
-            </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => fetchAllData()}
+              className="btn btn-sm btn-primary gap-2"
+              title="Refresh"
+            >
+              <FiRefreshCw />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs & secondary controls */}
+        <div className="between-flex flex-wrap gap-2 mt-3">
+          <TabToggle
+            currentTab={filterStatus}
+            setCurrentTab={setFilterStatus}
+            TabToggleOptions={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+            ]}
+          />
+          <div className="ml-auto flex items-center gap-2">
+            <Dropdown
+              position="bottom"
+              options={[
+                { value: "newest", label: <div className="flex items-center gap-2 w-full">Newest First</div> },
+                { value: "oldest", label: <div className="flex items-center gap-2 w-full">Oldest First</div> },
+                { value: "name-asc", label: <div className="flex items-center gap-2 w-full">Name A-Z</div> },
+                { value: "name-desc", label: <div className="flex items-center gap-2 w-full">Name Z-A</div> },
+                { value: "steps-asc", label: <div className="flex items-center gap-2 w-full">Steps ↑</div> },
+                { value: "steps-desc", label: <div className="flex items-center gap-2 w-full">Steps ↓</div> },
+              ]}
+              placeholder="Sort By"
+              onChange={(val) => {
+                switch (val) {
+                  case "newest":
+                    setSortConfig({ key: "createdAt", direction: "desc" });
+                    break;
+                  case "oldest":
+                    setSortConfig({ key: "createdAt", direction: "asc" });
+                    break;
+                  case "name-asc":
+                    setSortConfig({ key: "name", direction: "asc" });
+                    break;
+                  case "name-desc":
+                    setSortConfig({ key: "name", direction: "desc" });
+                    break;
+                  case "steps-asc":
+                    setSortConfig({ key: "stepsCount", direction: "asc" });
+                    break;
+                  case "steps-desc":
+                    setSortConfig({ key: "stepsCount", direction: "desc" });
+                    break;
+                  default:
+                    setSortConfig({ key: "createdAt", direction: "desc" });
+                }
+              }}
+              className="w-48"
+            />
           </div>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <ImSpinner5 className="w-12 h-12 animate-spin text-purple-500" />
-        </div>
-      ) : automations.length > 0 ? (
+      {/* Bulk actions bar */}
+      {selectedAutomations.length > 0 && (
         <div
-          className={`grid gap-5 ${
-            viewMode === "double" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
-          }`}
+          className="sticky top-2 z-10 bg-amber-50 border border-amber-200 text-amber-900 rounded p-2 mb-3 flex items-center gap-2"
+          role="region"
+          aria-label="Bulk actions"
         >
-          {getFilteredAndSortedAutomations().map((automation) => {
-            const isSelected = selectedAutomations.includes(automation._id);
-            const isDeleting = false; // Set this based on your deletion state
-
-            return (
-              <AutomationCard
-                key={automation._id}
-                automation={automation}
-                websites={websites}
-                lists={lists}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onSteps={onSteps}
-                isSelected={isSelected}
-                onSelect={handleSelectAutomation}
-                isDeleting={isDeleting}
-                viewMode={viewMode}
-              />
-            );
-          })}
+          <span className="px-2 py-1 rounded-sm text-primary text-xs">
+            {selectedAutomations.length} Selected
+          </span>
+          <button
+            onClick={() => setShowBulkDeleteConfirm(true)}
+            disabled={bulkDeleting}
+            className="btn px-2 py-1 rounded-sm text-white text-xs center-flex gap-2 bg-red-500 hover:bg-red-600 disabled:bg-red-400 disabled:cursor-not-allowed"
+          >
+            {bulkDeleting ? (
+              <ImSpinner5 className="animate-spin h-3 w-3" />
+            ) : (
+              <FiTrash2 />
+            )}
+            Delete selected
+          </button>
+          <button
+            onClick={clearSelection}
+            className="btn btn-xs hover:bg-amber-200 ml-auto text-xs text-amber-900/70 hover:underline rounded-sm"
+          >
+            Clear
+          </button>
         </div>
-      ) : (
-        ""
       )}
 
-      {getFilteredAndSortedAutomations().length === 0 && (
-        <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
-          <div className="w-16 h-16 bg-zinc-100 rounded-full center-flex mb-4">
-            <FiFilter className="w-8 h-8 text-zinc-400" />
-          </div>
-          <h3 className="text-lg text-zinc-600 mb-2">No websites found</h3>
-          <p className="text-sm text-zinc-500 mb-4">
-            {websites.length === 0
-              ? "No websites have been created yet."
-              : "No websites match your current filters."}
-          </p>
-          {websites.length === 0 ? (
-            <button
-              onClick={() => openAddEditModal()}
-              className="btn btn-sm btn-primary"
-            >
-              Create Your First Website
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                setSortBy("newest");
-                setFilterStatus("all");
-              }}
-              className="btn btn-sm btn-second"
-            >
-              Clear Filters
-            </button>
-          )}
-        </div>
+      {/* Automations Table */}
+      {loading ? (
+        <LoadingSpinner />
+      ) : filteredAutomations.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <div className="grid grid-cols-[50px_1fr_120px_140px_120px_120px_140px] items-center">
+              <TableCell className="p-3">
+                <Checkbox selected={selectAll} onChange={handleSelectAll} />
+              </TableCell>
+
+              <TableCell
+                className="p-3 cursor-pointer hover:text-primary"
+                onClick={() => handleSort("name")}
+              >
+                <div className="flex items-center gap-1">
+                  Name
+                  {sortConfig.key === "name" &&
+                    (sortConfig.direction === "asc" ? (
+                      <FiChevronUp />
+                    ) : (
+                      <FiChevronDown />
+                    ))}
+                </div>
+              </TableCell>
+
+              <TableCell className="p-3">Status</TableCell>
+
+              <TableCell className="p-3">List</TableCell>
+
+              <TableCell
+                className="p-3 cursor-pointer hover:text-primary"
+                onClick={() => handleSort("stepsCount")}
+              >
+                <div className="flex items-center gap-1">
+                  Steps
+                  {sortConfig.key === "stepsCount" &&
+                    (sortConfig.direction === "asc" ? (
+                      <FiChevronUp />
+                    ) : (
+                      <FiChevronDown />
+                    ))}
+                </div>
+              </TableCell>
+
+              <TableCell
+                className="p-3 cursor-pointer hover:text-primary"
+                onClick={() => handleSort("createdAt")}
+              >
+                <div className="flex items-center gap-1">
+                  Created
+                  {sortConfig.key === "createdAt" &&
+                    (sortConfig.direction === "asc" ? (
+                      <FiChevronUp />
+                    ) : (
+                      <FiChevronDown />
+                    ))}
+                </div>
+              </TableCell>
+
+              <TableCell className="p-3">Actions</TableCell>
+            </div>
+          </TableHeader>
+
+          <TableBody>
+            {filteredAutomations.map((automation) => {
+              const isSelected = selectedAutomations.includes(automation._id);
+              const hasList = !!automation.listId;
+
+              return (
+                <TableRow key={automation._id} isSelected={isSelected}>
+                  <div className="grid grid-cols-[50px_1fr_120px_140px_120px_120px_140px] items-center">
+                    <TableCell>
+                      <Checkbox
+                        selected={isSelected}
+                        onChange={() => handleSelectAutomation(automation._id)}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-20 h-20 bg-zinc-100 rounded border overflow-hidden">
+                          {automation.logo ? (
+                            <img
+                              src={automation.logo}
+                              alt={automation.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-zinc-100 center-flex">
+                              <span className="text-xs text-zinc-400">
+                                {automation.name?.charAt(0)?.toUpperCase() ||
+                                  "A"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div
+                            className="font-medium text-zinc-800 hover:underline cursor-pointer"
+                            onClick={() => handleView(automation)}
+                          >
+                            {automation.name}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          automation.isActive
+                            ? "bg-green-100 text-green-800 border border-green-200"
+                            : "bg-red-100 text-red-800 border border-red-200"
+                        }`}
+                      >
+                        {automation.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <span
+                        className={`flex-nowrap px-2 py-1 rounded text-xs ${
+                          hasList
+                            ? "bg-blue-100 text-blue-800 border border-blue-200"
+                            : "bg-gray-100 text-gray-800 border border-gray-200"
+                        }`}
+                      >
+                        {hasList ? "Connected" : "Not Connected"}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <span className="font-medium">
+                        {automation.stepsCount || 0}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <span className="text-sm text-zinc-600">
+                        {formatDate(automation.createdAt)}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <Dropdown
+                        position="left"
+                        options={[
+                          {
+                            value: "view",
+                            label: (
+                              <div className="flex items-center gap-2 w-full">
+                                <FiEye />
+                                View Details
+                              </div>
+                            ),
+                          },
+                          {
+                            value: "edit",
+                            label: (
+                              <div className="flex items-center gap-2 w-full">
+                                <FiEdit />
+                                Edit Automation
+                              </div>
+                            ),
+                          },
+                          {
+                            value: "copy",
+                            label: (
+                              <div className="flex items-center gap-2 w-full">
+                                <FiCopy />
+                                Copy Automation Id
+                              </div>
+                            ),
+                          },
+                          {
+                            value: "delete",
+                            label: (
+                              <div className="flex items-center gap-2 w-full">
+                                <FiTrash2 />
+                                Delete Automation
+                              </div>
+                            ),
+                          },
+                        ]}
+                        placeholder="Automation Actions"
+                        onChange={(val) => {
+                          if (val === "view") handleView(automation);
+                          if (val === "edit") handleEdit(automation);
+                          if (val === "delete") handleDeleteClick(automation);
+                          if (val === "copy")
+                            navigator.clipboard.writeText(automation._id);
+                        }}
+                      />
+                    </TableCell>
+                  </div>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      ) : (
+        <EmptyState
+          title="0 Automations Found"
+          description={`No Automation Found. Click "Create New Automation" to add one.`}
+        />
       )}
 
       {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 w-full h-screen bg-white  z-50 overflow-y-auto">
-          <div className="min-h-screen flex flex-col">
-            {/* Modal Header */}
-            <div className="w-full px-6 py-3 between-flex">
-              <div>
-                <h2 className="text-xl 3xl:text-2xl  text-primary">
-                  {isEditing ? "Edit Automation" : "Add New Automation"}
-                </h2>
-                <p className="text-sm text-zinc-600">
-                  {isEditing
-                    ? "Update your automation configuration"
-                    : "Configure a new automation"}
-                </p>
-              </div>
+      <AutomationModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingMiniId(null);
+          setModalMode("create");
+          setFormData({
+            name: "",
+            description: "",
+            isActive: true,
+            logo: "",
+            listId: "",
+          });
+        }}
+        isEditing={isEditing}
+        isViewing={isViewing}
+        formData={formData}
+        handleInputChange={handleInputChange}
+        handleSubmit={handleSubmit}
+        modalLoading={modalLoading}
+        lists={lists}
+        selectedList={selectedList}
+        handleListConfirm={handleListConfirm}
+        isCustomer={!!customer}
+      />
 
-              <button
-                onClick={() => {
-                  setIsModalOpen(false);
-                }}
-                className="text-zinc-500 hover:text-zinc-800 transition-colors p-2  hover:bg-zinc-300 border border-transparent hover:border-zinc-300"
-                aria-label="Close modal"
-              >
-                <FiX size={20} className="stroke-current" />
-              </button>
-            </div>
-
-            <StepIndicator currentStep={currentStep} />
-
-            {/* Modal Content */}
-            <div className="flex-1 p-6">
-              {modalLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <div className="flex flex-col items-center">
-                    <ImSpinner5 className="w-12 h-12 animate-spin text-primary mb-4" />
-                    <p className="text-zinc-600">
-                      Loading Automation details...
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <form
-                  onSubmit={handleSubmit}
-                  className="max-w-4xl mx-auto flex flex-col bg-zinc-200 border border-zinc-300 p-6 rounded"
-                >
-                  <AnimatePresence mode="wait">
-                    {currentStep === STEPS.BASIC_INFO && (
-                      <BasicInfoStep
-                        formData={formData}
-                        onChange={handleInputChange}
-                      />
-                    )}
-                    {currentStep === STEPS.SELECT_WEBSITE && (
-                      <SelectionStep
-                        stepKey="step2"
-                        selectedItem={selectedWebsite}
-                        onSelectionChange={() => setIsWebsiteModalOpen(true)}
-                        onOpenModal={() => setIsWebsiteModalOpen(true)}
-                        title="Select a Website"
-                        icon={FiGlobe}
-                        noSelectionText="No website selected. Choose a website to associate with this automation."
-                      />
-                    )}
-                    {currentStep === STEPS.SELECT_LIST && (
-                      <SelectionStep
-                        stepKey="step3"
-                        selectedItem={selectedList}
-                        onSelectionChange={() => setIsListModalOpen(true)}
-                        onOpenModal={() => setIsListModalOpen(true)}
-                        title="Select a List"
-                        icon={KeyRound}
-                        noSelectionText="No list selected. Choose a list to associate with this automation."
-                      />
-                    )}
-                    {currentStep === STEPS.REVIEW && (
-                      <ReviewStep
-                        formData={formData}
-                        selectedWebsite={selectedWebsite}
-                        selectedList={selectedList}
-                      />
-                    )}
-                  </AnimatePresence>
-                </form>
-              )}
-            </div>
-            <div className="px-6 py-3 bg-zinc-200 border-t border-zinc-300 sticky bottom-0">
-              <div className="flex justify-between gap-4 max-w-4xl mx-auto">
-                <button
-                  type="button"
-                  onClick={handlePrevStep}
-                  disabled={currentStep === STEPS.BASIC_INFO}
-                  className="btn btn-sm 2xl:btn-md btn-second"
-                >
-                  <FiChevronLeft /> Back
-                </button>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsModalOpen(false);
-                    }}
-                    className="btn btn-sm 2xl:btn-md btn-third"
-                    disabled={modalLoading}
-                  >
-                    Cancel
-                  </button>
-
-                  {currentStep < STEPS.REVIEW ? (
-                    <button
-                      type="button"
-                      onClick={handleNextStep}
-                      className="btn btn-sm 2xl:btn-md btn-primary"
-                    >
-                      Next
-                      <FiChevronRight />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleSubmit}
-                      disabled={modalLoading}
-                      className={`btn btn-sm 2xl:btn-md  ${
-                        isEditing ? "btn-update" : "btn-add"
-                      } `}
-                    >
-                      {modalLoading ? (
-                        <>
-                          <ImSpinner5 className="w-4 h-4 animate-spin" />
-                          {isEditing ? "Updating..." : "Creating..."}
-                        </>
-                      ) : (
-                        <>
-                          <FiCheck />
-                          {isEditing
-                            ? "Update Automation"
-                            : "Create Automation"}
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Website Selection Modal */}
-      {isWebsiteModalOpen && (
-        <SelectModal
-          isOpen={isWebsiteModalOpen}
-          onCancel={() => setIsWebsiteModalOpen(false)}
-          onConfirm={handleWebsiteConfirm}
-          title="Select Website"
-          items={websites}
-          selectedItems={formData.websiteId ? [formData.websiteId] : []}
-        />
-      )}
-
-      {/* List Selection Modal */}
-      {isListModalOpen && (
-        <SelectModal
-          isOpen={isListModalOpen}
-          onCancel={() => setIsListModalOpen(false)}
-          onConfirm={handleListConfirm}
-          title="Select List"
-          description="Choose a list to associate with this automation"
-          items={lists}
-          multiSelect={false}
-          searchPlaceholder="Search lists..."
-          emptyMessage="No lists available. Create a list first or all lists are connected to an automation"
-          selectedItems={formData.listId ? [formData.listId] : []}
-        />
-      )}
+      {/* Confirmation Modals */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setAutomationToDelete(null);
+        }}
+        onConfirm={handleDelete}
+        title="Delete Automation"
+        message={`Are you sure you want to delete the automation "${automationToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
+      <ConfirmationModal
+        isOpen={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        onConfirm={handleBulkDelete}
+        title="Delete Multiple Automations"
+        message={`Are you sure you want to delete ${selectedAutomations.length} automations? This action cannot be undone.`}
+        confirmText={bulkDeleting ? "Deleting..." : "Delete"}
+        cancelText="Cancel"
+        type="danger"
+        disabled={bulkDeleting}
+      />
     </SidebarWrapper>
   );
 };
