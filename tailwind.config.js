@@ -96,7 +96,7 @@ module.exports = {
       // 2) Base button styles
       const btnUtilities = {
         ".btn": {
-          "@apply inline-flex transition-all duration-200 ease-in-out focus:outline-none cursor-pointer":
+          "@apply inline-flex transition-all duration-200 ease-in-out focus:outline-none cursor-pointer rounded-sm":
             {},
         },
         ".btn-icon": {

@@ -55,7 +55,7 @@ body {
 .dragging {
   opacity: 0.5;
   transform: scale(0.98);
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.311);
 }
 
 /* Add to your CSS/Tailwind config */

@@ -5,7 +5,7 @@ import SidebarWrapper from "@/components/SidebarWrapper";
 import {
   Checkbox,
   EmptyState,
-  getUrlParams,
+  GetUrlParams,
   inputStyles,
   LoadingSpinner,
   TabToggle,
@@ -223,7 +223,7 @@ const Lists = () => {
 
   // Get URL parameters on component mount
   useEffect(() => {
-    const params = getUrlParams();
+    const params = GetUrlParams();
     setUrlParams(params);
   }, []);
 

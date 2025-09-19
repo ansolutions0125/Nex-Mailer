@@ -5,7 +5,7 @@ import SidebarWrapper from "@/components/SidebarWrapper";
 import {
   Checkbox,
   EmptyState,
-  getUrlParams,
+  GetUrlParams,
   inputStyles,
   LoadingSpinner,
   TabToggle,
@@ -49,7 +49,12 @@ const TableHeader = ({ children, className = "" }) => (
   </div>
 );
 
-const TableRow = ({ children, className = "", isSelected = false, onClick }) => (
+const TableRow = ({
+  children,
+  className = "",
+  isSelected = false,
+  onClick,
+}) => (
   <div
     className={`border-b border-zinc-100 transition-all ${
       isSelected ? "bg-blue-50" : ""
@@ -119,7 +124,7 @@ const Automations = () => {
 
   // Get URL parameters on component mount
   useEffect(() => {
-    const params = getUrlParams();
+    const params = GetUrlParams();
     setUrlParams(params);
   }, []);
 
@@ -286,7 +291,9 @@ const Automations = () => {
       await fetchAllData();
     } catch (error) {
       console.error("Bulk delete error:", error);
-      showError(error.message || "An error occurred while deleting automations");
+      showError(
+        error.message || "An error occurred while deleting automations"
+      );
     } finally {
       setBulkDeleting(false);
     }
@@ -336,7 +343,8 @@ const Automations = () => {
       try {
         const headers = {
           "Content-Type": "application/json",
-          ...(customer && customerToken && { "mailer-auth-token": customerToken }),
+          ...(customer &&
+            customerToken && { "mailer-auth-token": customerToken }),
           ...(admin && adminToken && { "mailer-auth-token": adminToken }),
         };
 
@@ -369,7 +377,9 @@ const Automations = () => {
         await fetchAllData();
       } catch (error) {
         console.error("Submission error:", error);
-        showError(error.message || "An error occurred while saving the automation");
+        showError(
+          error.message || "An error occurred while saving the automation"
+        );
       } finally {
         setModalLoading(false);
       }
@@ -523,7 +533,7 @@ const Automations = () => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: type === "checkbox" ? checked : value.trim(),
     }));
   }, []);
 
@@ -655,8 +665,22 @@ const Automations = () => {
           <Dropdown
             position="bottom"
             options={[
-              { value: "local", label: <div className="flex items-center gap-2 w-full">Local Search</div> },
-              { value: "live", label: <div className="flex items-center gap-2 w-full">Live Search</div> },
+              {
+                value: "local",
+                label: (
+                  <div className="flex items-center gap-2 w-full">
+                    Local Search
+                  </div>
+                ),
+              },
+              {
+                value: "live",
+                label: (
+                  <div className="flex items-center gap-2 w-full">
+                    Live Search
+                  </div>
+                ),
+              },
             ]}
             placeholder="Search Mode"
             onChange={(val) => setSearchMode(val)}
@@ -691,12 +715,54 @@ const Automations = () => {
             <Dropdown
               position="bottom"
               options={[
-                { value: "newest", label: <div className="flex items-center gap-2 w-full">Newest First</div> },
-                { value: "oldest", label: <div className="flex items-center gap-2 w-full">Oldest First</div> },
-                { value: "name-asc", label: <div className="flex items-center gap-2 w-full">Name A-Z</div> },
-                { value: "name-desc", label: <div className="flex items-center gap-2 w-full">Name Z-A</div> },
-                { value: "steps-asc", label: <div className="flex items-center gap-2 w-full">Steps ↑</div> },
-                { value: "steps-desc", label: <div className="flex items-center gap-2 w-full">Steps ↓</div> },
+                {
+                  value: "newest",
+                  label: (
+                    <div className="flex items-center gap-2 w-full">
+                      Newest First
+                    </div>
+                  ),
+                },
+                {
+                  value: "oldest",
+                  label: (
+                    <div className="flex items-center gap-2 w-full">
+                      Oldest First
+                    </div>
+                  ),
+                },
+                {
+                  value: "name-asc",
+                  label: (
+                    <div className="flex items-center gap-2 w-full">
+                      Name A-Z
+                    </div>
+                  ),
+                },
+                {
+                  value: "name-desc",
+                  label: (
+                    <div className="flex items-center gap-2 w-full">
+                      Name Z-A
+                    </div>
+                  ),
+                },
+                {
+                  value: "steps-asc",
+                  label: (
+                    <div className="flex items-center gap-2 w-full">
+                      Steps ↑
+                    </div>
+                  ),
+                },
+                {
+                  value: "steps-desc",
+                  label: (
+                    <div className="flex items-center gap-2 w-full">
+                      Steps ↓
+                    </div>
+                  ),
+                },
               ]}
               placeholder="Sort By"
               onChange={(val) => {
@@ -857,13 +923,20 @@ const Automations = () => {
                             </div>
                           )}
                         </div>
-                        <div>
+                        <div className="flex flex-col gap-2">
                           <div
                             className="font-medium text-zinc-800 hover:underline cursor-pointer"
                             onClick={() => handleView(automation)}
                           >
                             {automation.name}
                           </div>
+                          <a 
+                            href={`/automations/work-flow?automationId=${automation._id}`}
+                            className="inline-flex items-center gap-2 px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary/90 transition-colors"
+                          >
+                            <FiEdit className="w-3 h-3" />
+                            Edit Work-Flow
+                          </a>
                         </div>
                       </div>
                     </TableCell>
@@ -993,6 +1066,12 @@ const Automations = () => {
         selectedList={selectedList}
         handleListConfirm={handleListConfirm}
         isCustomer={!!customer}
+        onStatusChange={(status) => {
+          setFormData((prev) => ({
+            ...prev,
+            isActive: status,
+          }));
+        }}
       />
 
       {/* Confirmation Modals */}

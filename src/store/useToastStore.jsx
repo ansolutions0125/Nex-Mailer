@@ -4,7 +4,7 @@ import { create } from "zustand";
 export const useToastStore = create((set, get) => ({
   toasts: [],
 
-  showToast: (message, type = "info", duration = 7000, options = {}) => {
+  showToast: (message, type = "info", duration = 5000, options = {}) => {
     const id = Date.now() + Math.random();
     const toast = {
       id,
@@ -40,19 +40,19 @@ export const useToastStore = create((set, get) => ({
   },
 
   // Convenience methods
-  showSuccess: (message, duration = 7000, options = {}) => {
+  showSuccess: (message, duration = 5000, options = {}) => {
     return get().showToast(message, "success", duration, options);
   },
 
-  showError: (message, duration = 7000, options = {}) => {
+  showError: (message, duration = 5000, options = {}) => {
     return get().showToast(message, "error", duration, options);
   },
 
-  showInfo: (message, duration = 7000, options = {}) => {
+  showInfo: (message, duration = 5000, options = {}) => {
     return get().showToast(message, "info", duration, options);
   },
 
-  showWarning: (message, duration = 1000, options = {}) => {
+  showWarning: (message, duration = 2000, options = {}) => {
     return get().showToast(message, "warning", duration, options);
   },
 }));

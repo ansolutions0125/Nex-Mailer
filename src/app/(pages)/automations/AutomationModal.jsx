@@ -41,6 +41,7 @@ const AutomationModal = ({
   lists = [],
   selectedList,
   handleListConfirm,
+  onStatusChange
 }) => {
   const [isListModalOpen, setIsListModalOpen] = useState(false);
 
@@ -316,7 +317,7 @@ const AutomationModal = ({
                   <ToggleLiver
                     key="isActiveToggle"
                     checked={formData.isActive}
-                    onChange={handleInputChange}
+                    onChange={onStatusChange}
                     name="isActive"
                   />
                   <div>

@@ -32,37 +32,43 @@ export const KeyValue = ({ label, value }) => {
   );
 };
 
-export const getUrlParams = () => {
+export const GetUrlParams = () => {
   if (typeof window === "undefined") return {};
   const params = new URLSearchParams(window.location.search);
   return Object.fromEntries(params.entries());
 };
 
-export const LoadingSpinner = ({ type = "compo" }) => (
+export const LoadingSpinner = ({
+  type = "compo",
+  title = "Processing!",
+  subLine,
+}) => (
   <div
     className={`${
       type === "page" ? "h-screen goodboy" : "h-64"
-    } center-flex flex-col gap-2`}
+    } center-flex flex-col`}
   >
     {type === "page" && (
       <h1
         className={` ${
-          type === "page" ? "text-xl lg:text-3xl" : "text-sm xl:text-base"
-        } font-medium text-zinc-600 animate-pulse`}
+          type === "page"
+            ? "text-xl lg:text-3xl"
+            : "text-sm md:text-base"
+        } font-medium text-zinc-600 animate-pulse mb-2`}
       >
-        Processing!
+        {title}
       </h1>
     )}
     <div
       className={`${
         type === "page" && "mb-80 md:mb-32"
-      } flex justify-center items-center relative`}
+      } flex justify-center items-center relative mb-2`}
     >
       <div
         className={`${
           type === "page"
             ? "h-20 w-20 lg:w-24 lg:h-24"
-            : "h-10 w-10 lg:w-12 lg:h-12"
+            : "h-10 w-10 lg:w-14 lg:h-14"
         } border-2 border-zinc-300 border-t-zinc-700 animate-spin rounded-full`}
       />
       <div
@@ -81,11 +87,15 @@ export const LoadingSpinner = ({ type = "compo" }) => (
 
     <h1
       className={`${
-        type === "page" ? "hidden" : "text-sm xl:text-base"
+        type === "page" ? "hidden" : "text-sm md:text-base xl:text-lg"
       } font-medium text-zinc-600 animate-pulse`}
     >
-      Processing!
+      {title}
     </h1>
+
+    {subLine && (
+      <p className="text-sm text-zinc-500 animate-pulse">{subLine}</p>
+    )}
 
     {type === "page" && (
       <div className="mt-8 text-center flex flex-col items-center">

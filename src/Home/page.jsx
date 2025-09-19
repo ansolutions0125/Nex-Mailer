@@ -26,6 +26,7 @@ import { useToastStore } from "@/store/useToastStore";
 import { RxDragHandleVertical } from "react-icons/rx";
 import { HiArrowLongDown } from "react-icons/hi2";
 import Link from "next/link";
+import { GetUrlParams } from "@/presets/styles";
 
 /* =========================================================
    Endpoints
@@ -457,12 +458,7 @@ ConfirmDialog.propTypes = {
    Main Page (reads ?automationId=...)
 ========================================================= */
 export default function WorkflowPage() {
-  function getQueryParam(param) {
-    const urlParams = new URLSearchParams(window.location.search);
-    console.log(urlParams)
-    return urlParams.get(param);
-  }
- 
+  const { showSuccess, showError, showInfo, showWarning } = useToastStore()
   const [flowId, setFlowId] = useState()
   const [loadingShell, setLoadingShell] = useState(true);
   const [loadingError, setLoadingError] = useState(null);
@@ -489,8 +485,8 @@ export default function WorkflowPage() {
   // hydrate shell + possible draft
   useEffect(() => {
     (async () => {
-       const flowId = getQueryParam("automationId");
-       setFlowId(flowId);
+       const params = GetUrlParams();
+       setFlowId(params.automationId);
       if (!flowId) return;
       try {
         setLoadingShell(true);
