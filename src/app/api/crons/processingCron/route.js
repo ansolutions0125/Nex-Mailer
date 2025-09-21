@@ -10,7 +10,6 @@
  * 4. Processes each step based on its type (e.g., 'sendMail', 'waitSubscriber').
  * 5. Updates the contact's automation state, including the step number and next execution time.
  * 6. Handles errors gracefully by logging them and moving failed automations to a history array.
- * 7. Updates statistics across multiple models (Flow, Stats, Website, Server, etc.)
  *
  * @author Golden Assistant
  */
@@ -22,7 +21,6 @@ import Contact from "@/models/Contact";
 import Flow from "@/models/Flow";
 import EmailQueue from "@/models/EmailQueue";
 import Stats from "@/models/Stats";
-import Website from "@/models/Website";
 import Server from "@/models/Server";
 import EmailLogs from "@/models/EmailLogs";
 import dbConnect from "@/config/mongoConfig";

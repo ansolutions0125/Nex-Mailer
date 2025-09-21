@@ -636,6 +636,9 @@ const Automations = () => {
   };
 
   const filteredAutomations = getFilteredAndSortedAutomations();
+  // Find the full object for the automation currently opened in the modal
+  const currentAutomation =
+    allAutomations.find((a) => a._id === editingMiniId) || null;
 
   return (
     <SidebarWrapper>
@@ -930,7 +933,7 @@ const Automations = () => {
                           >
                             {automation.name}
                           </div>
-                          <a 
+                          <a
                             href={`/automations/work-flow?automationId=${automation._id}`}
                             className="inline-flex items-center gap-2 px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary/90 transition-colors"
                           >
@@ -1041,7 +1044,6 @@ const Automations = () => {
         />
       )}
 
-      {/* Modal */}
       <AutomationModal
         isOpen={isModalOpen}
         onClose={() => {
@@ -1066,12 +1068,11 @@ const Automations = () => {
         selectedList={selectedList}
         handleListConfirm={handleListConfirm}
         isCustomer={!!customer}
-        onStatusChange={(status) => {
-          setFormData((prev) => ({
-            ...prev,
-            isActive: status,
-          }));
-        }}
+        onStatusChange={(status) =>
+          setFormData((prev) => ({ ...prev, isActive: status }))
+        }
+        // NEW: pass stats so the Performance section renders in View mode
+        stats={currentAutomation?.stats}
       />
 
       {/* Confirmation Modals */}

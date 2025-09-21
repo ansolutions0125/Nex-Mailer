@@ -6,7 +6,9 @@ import {
   FiImage,
   FiCalendar,
   FiActivity,
-  FiEdit,
+  FiMail,
+  FiUser,
+  FiBarChart2,
 } from "react-icons/fi";
 import { ImSpinner5 } from "react-icons/im";
 import SelectModal from "@/components/SelectModal";
@@ -19,15 +21,14 @@ import {
 
 /**
  * AutomationModal
- * - Mirrors ListModal UX but for Automations (basic info + optional list association)
- * - Props:
- *   - isOpen, onClose, isEditing, isViewing
- *   - formData: { name, description, isActive, logo, listId }
- *   - handleInputChange, handleSubmit
- *   - modalLoading
- *   - lists: array of Lists to optionally associate (listId)
- *   - selectedList: hydrated list object from lists (by formData.listId)
- *   - handleListConfirm(selectionIds[])
+ * Props:
+ *  - isOpen, onClose
+ *  - isEditing, isViewing
+ *  - formData: { name, description, isActive, logo, listId }
+ *  - owner: { _id, firstName, lastName, email } | null
+ *  - stats: Flow.stats object | null
+ *  - handleInputChange(e), handleSubmit(e), modalLoading
+ *  - lists, selectedList, handleListConfirm(selectionIds[])
  */
 const AutomationModal = ({
   isOpen,
@@ -35,18 +36,18 @@ const AutomationModal = ({
   isEditing,
   isViewing = false,
   formData,
+  owner = null,
+  stats = null,
   handleInputChange,
   handleSubmit,
   modalLoading,
   lists = [],
   selectedList,
   handleListConfirm,
-  onStatusChange
 }) => {
   const [isListModalOpen, setIsListModalOpen] = useState(false);
 
   const stopPropagation = (e) => e.stopPropagation();
-
   const handleListSelect = (selection) => {
     handleListConfirm(selection);
     setIsListModalOpen(false);
@@ -64,19 +65,24 @@ const AutomationModal = ({
     });
   };
 
-  if (!isOpen) return null;
+  const prettyKey = (k) =>
+    k
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (s) => s.toUpperCase())
+      .trim();
 
   const getModalTitle = () => {
     if (isViewing) return "Automation Details";
     if (isEditing) return "Edit Automation";
     return "Add New Automation";
   };
-
   const getModalSubtitle = () => {
     if (isViewing) return "View your automation configuration and statistics";
     if (isEditing) return "Update your automation configuration";
     return "Configure a new Automation";
   };
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -89,6 +95,7 @@ const AutomationModal = ({
         } max-h-[90vh] overflow-y-auto`}
         onClick={stopPropagation}
       >
+        {/* Header */}
         <div className="flex justify-between items-start mb-4">
           <div className="flex flex-col">
             <h2 className="text-xl font-bold">{getModalTitle()}</h2>
@@ -103,10 +110,11 @@ const AutomationModal = ({
           </button>
         </div>
 
+        {/* Loading */}
         {modalLoading ? (
           <LoadingSpinner />
         ) : isViewing ? (
-          // ----- View Mode -----
+          /* -------------------- VIEW MODE -------------------- */
           <div className="space-y-6">
             {/* Basic Information */}
             <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4">
@@ -246,9 +254,49 @@ const AutomationModal = ({
                 </div>
               </div>
             </div>
+
+            {/* Stats */}
+            {!!stats && (
+              <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-zinc-800 mb-4 flex items-center gap-2">
+                  <FiBarChart2 className="w-5 h-5" />
+                  Performance
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {Object.entries(stats).map(([k, v]) => {
+                    if (v === null || v === undefined) return null;
+                    let val = k.includes("Rate")
+                      ? `${Number(v).toFixed(1)}%`
+                      : k === "averageProcessingTime"
+                      ? `${Number(v).toFixed(1)}s`
+                      : k === "lastProcessedAt"
+                      ? v
+                        ? formatDate(v)
+                        : "Never"
+                      : Number.isFinite(Number(v))
+                      ? Number(v).toLocaleString()
+                      : String(v);
+
+                    return (
+                      <div
+                        key={k}
+                        className="bg-white p-3 border border-zinc-200 rounded-md"
+                      >
+                        <div className="text-xs text-zinc-500">
+                          {prettyKey(k)}
+                        </div>
+                        <div className="text-base font-semibold text-zinc-800">
+                          {val}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          // ----- Edit/Create Mode -----
+          /* -------------------- EDIT / CREATE MODE -------------------- */
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left column: Basic Info */}
@@ -317,7 +365,7 @@ const AutomationModal = ({
                   <ToggleLiver
                     key="isActiveToggle"
                     checked={formData.isActive}
-                    onChange={onStatusChange}
+                    onChange={handleInputChange}
                     name="isActive"
                   />
                   <div>
@@ -391,29 +439,6 @@ const AutomationModal = ({
               </button>
             </div>
           </form>
-        )}
-
-        {/* View Mode Action Buttons */}
-        {isViewing && (
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-zinc-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-sm lg:btn-md hover:bg-zinc-200"
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onClose(); // parent will switch to edit mode if needed
-              }}
-              className="btn btn-sm lg:btn-md btn-primary gap-2"
-            >
-              <FiEdit />
-              Edit Automation
-            </button>
-          </div>
         )}
       </div>
 
