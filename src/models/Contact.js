@@ -1,296 +1,204 @@
 // models/Contact.js
 import mongoose from "mongoose";
+import validator from "validator";
 
-const ContactSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+/* ------------------------- Subdocuments ------------------------- */
+
+// Per-customer profile (identity + state)
+const CustomerProfileSchema = new Schema(
   {
-    // Basic Contact Information
-    fullName: {
-      type: String,
-      required: [true, "Please provide a full name for the contact."],
-      trim: true,
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
     },
-    email: {
-      type: String,
-      required: [true, "Please provide an email for the contact."],
-      unique: true,
-      trim: true,
-      lowercase: true,
-      match: [
-        /^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$/,
-        "Please provide a valid email address.",
-      ],
-    },
-
-    // Contact Status
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-
-    automationAssociations: [
-      {
-        automationId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Flow",
-          required: true,
-        },
-        stepNumber: {
-          type: Number,
-          default: 0,
-        },
-        nextStepTime: {
-          type: Date,
-          default: null,
-        },
-        startedAt: {
-          type: Date,
-          default: () => new Date(),
-        },
-      },
-    ],
-
-    // Multi-List Associations
-    listAssociations: [
-      {
-        listId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "List",
-          required: [true, "A list ID is required for each association."],
-        },
-        status: {
-          type: Boolean,
-          default: true,
-        },
-        currentStep: {
-          type: Number,
-          default: 1,
-        },
-        subscribedAt: {
-          type: Date,
-          default: () => new Date().toISOString(),
-        },
-        unsubscribedAt: {
-          type: Date,
-          default: null,
-        },
-        source: {
-          type: String,
-          enum: ["manual", "import", "api", "form", "automation", "campaign"],
-          default: "manual",
-        },
-        nextStepTime: {
-          type: Date,
-          default: null,
-        },
-      },
-    ],
-
-    listHistory: [
-      {
-        listId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "List",
-          required: true,
-        },
-        subscribedAt: {
-          type: Date,
-        },
-        unsubscribedAt: {
-          type: Date,
-        },
-        source: {
-          type: String,
-          enum: ["manual", "import", "api", "form", "automation", "campaign"],
-          default: "manual",
-        },
-      },
-    ],
-
-    // Automation History - Track all automation journeys
-    automationHistory: [
-      {
-        automationId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Flow",
-          required: true,
-        },
-        listId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "List",
-          required: true,
-        },
-        addedAt: {
-          type: Date,
-          required: true,
-        },
-        completedAt: {
-          type: Date,
-          default: null,
-        },
-        status: {
-          type: String,
-          enum: ["active", "completed", "paused", "failed", "cancelled"],
-          default: "active",
-        },
-        stepsCompleted: {
-          type: Number,
-          default: 0,
-        },
-      },
-    ],
-
-    // Engagement History & Analytics
-    engagementHistory: {
-      totalEmailsSent: {
-        type: Number,
-        default: 0,
-      },
-      totalEmailsDelivered: {
-        type: Number,
-        default: 0,
-      },
-      totalEmailsOpened: {
-        type: Number,
-        default: 0,
-      },
-      totalEmailsClicked: {
-        type: Number,
-        default: 0,
-      },
-
-      // Engagement Rates (calculated fields)
-      openRate: {
-        type: Number,
-        default: 0,
-      },
-      clickRate: {
-        type: Number,
-        default: 0,
-      },
-
-      // Engagement Score (0-100)
-      engagementScore: {
-        type: Number,
-        default: 50,
-        min: 0,
-        max: 100,
-      },
-    },
-    websiteId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Website",
-      index: true,
-    },
-
+    fullName: { type: String, trim: true }, // per-customer display name
+    isActive: { type: Boolean, default: true }, // can be deactivated by this customer
     location: {
-      country: String,
-      city: String,
+      country: { type: String, trim: true },
+      city: { type: String, trim: true },
     },
-    createdBy: {
-      type: String,
-      required: false,
-      default: "system",
-    },
+    tags: [{ type: String, trim: true }], // customer-specific tags/segments
+    createdAt: { type: Date, default: () => new Date() },
+    updatedAt: { type: Date, default: () => new Date() },
+  },
+  { _id: false }
+);
 
-    updatedBy: {
+// Per-customer engagement overlay
+const CustomerEngagementSchema = new Schema(
+  {
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
+    totalSent: { type: Number, default: 0 },
+    totalDelivered: { type: Number, default: 0 },
+    totalOpened: { type: Number, default: 0 },
+    totalClicked: { type: Number, default: 0 },
+    openRate: { type: Number, default: 0 },
+    clickRate: { type: Number, default: 0 },
+    engagementScore: { type: Number, default: 50, min: 0, max: 100 },
+    updatedAt: { type: Date, default: () => new Date() },
+  },
+  { _id: false }
+);
+
+// Current list memberships
+const ListMembershipSchema = new Schema(
+  {
+    listId: { type: Schema.Types.ObjectId, ref: "List", required: true },
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
+    isSubscribed: { type: Boolean, default: true },
+    subscribedAt: { type: Date, default: () => new Date() },
+    unsubscribedAt: { type: Date, default: null },
+    source: {
       type: String,
-      required: false,
-      default: "system",
+      enum: ["manual", "import", "api", "form", "automation", "campaign"],
+      default: "manual",
     },
   },
-  {
-    timestamps: true,
-  }
+  { _id: false }
 );
-// Pre-save middleware to calculate engagement metrics
-ContactSchema.pre("save", async function (next) {
-  const engagement = this.engagementHistory;
-  if (engagement.totalEmailsDelivered > 0) {
-    engagement.openRate =
-      (engagement.totalEmailsOpened / engagement.totalEmailsDelivered) * 100;
-  }
-  if (engagement.totalEmailsOpened > 0) {
-    engagement.clickRate =
-      (engagement.totalEmailsClicked / engagement.totalEmailsOpened) * 100;
-  }
-  const deliveryRate =
-    engagement.totalEmailsDelivered > 0
-      ? (engagement.totalEmailsDelivered / engagement.totalEmailsSent) * 100
-      : 0;
-  engagement.engagementScore = Math.min(
-    100,
-    Math.max(
-      0,
-      engagement.openRate * 0.4 +
-        engagement.clickRate * 0.4 +
-        deliveryRate * 0.2
-    )
-  );
 
-  // Populate websiteId from the first list association on a new contact
-  if (this.isNew && this.listAssociations.length > 0) {
-    // You'll need to import the List model here
-    const List = mongoose.model("List");
-    const list = await List.findById(this.listAssociations[0].listId).select(
-      "websiteId"
-    );
-    if (list) {
-      this.websiteId = list.websiteId;
-    }
-  }
+// Automation participation (active + history)
+const AutomationHistorySchema = new Schema(
+  {
+    flowId: { type: Schema.Types.ObjectId, ref: "Flow", required: true },
+    listId: { type: Schema.Types.ObjectId, ref: "List", required: true },
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
+    startedAt: { type: Date, required: true },
+    completedAt: { type: Date, default: null },
+    status: {
+      type: String,
+      enum: ["active", "completed", "paused", "failed", "cancelled"],
+      default: "active",
+    },
+    stepsCompleted: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
 
-  next();
+// Active Automations (active)
+const ActiveAutomationsSchema = new Schema({
+  automationId: { type: Schema.Types.ObjectId, ref: "Flow", required: true },
+  listId: { type: Schema.Types.ObjectId, ref: "List", required: true }, // The list this automation was triggered from
+  customerId: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
+  startedAt: { type: Date, required: true },
+  completedAt: { type: Date, default: null },
+  status: {
+    type: String,
+    enum: ["active", "completed", "paused", "failed", "cancelled", "waiting"],
+    default: "active",
+  },
+  stepsCompleted: { type: Number, default: 0 },
+  currentStep: { type: Number, default: 0 }, // Index of the current step in the flow's steps array
+  nextStepAt: { type: Date, default: null }, // When the next step should be processed (for wait steps)
 });
 
-// Post-save middleware for stat updates
-ContactSchema.post("save", async function (doc) {
-  if (doc.isNew && doc.websiteId) {
-    try {
-      const Website = mongoose.model("Website");
-      const Stats = mongoose.model("Stats");
+// General history log (always customer-scoped)
+const HistorySchema = new Schema(
+  {
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
+    type: { type: String, required: true }, // subscription, automation, update, delete
+    message: { type: String },
+    data: { type: Schema.Types.Mixed },
+    createdAt: { type: Date, default: () => new Date() },
+    createdBy: { type: String, default: "system" },
+  },
+  { _id: false }
+);
 
-      await Website.findByIdAndUpdate(doc.websiteId, {
-        $inc: { "stats.totalSubscribers": 1 },
-      });
-      await Stats.findOneAndUpdate(
-        { _id: "current" },
-        { $inc: { totalUsers: 1 } },
-        { new: true, upsert: true }
-      );
-    } catch (error) {
-      console.error(`Error in Contact post-save hook: ${error.message}`);
-    }
-  }
-});
+// Custom fields for future-proofing (customer-specific)
+const CustomFieldSchema = new Schema(
+  {
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
+    key: { type: String, trim: true },
+    value: Schema.Types.Mixed,
+  },
+  { _id: false }
+);
 
-// Post-delete middleware for stat updates
-ContactSchema.post("findOneAndDelete", async function (doc) {
-  if (doc && doc.websiteId) {
-    try {
-      const Website = mongoose.model("Website");
-      const Stats = mongoose.model("Stats");
+/* ------------------------- Main Schema ------------------------- */
 
-      await Website.findByIdAndUpdate(doc.websiteId, {
-        $inc: { "stats.totalSubscribers": -1 },
-      });
-      await Stats.findOneAndUpdate(
-        { _id: "current" },
-        { $inc: { totalUsers: -1 } },
-        { new: true }
-      );
-    } catch (error) {
-      console.error(`Error in Contact post-delete hook: ${error.message}`);
-    }
-  }
-});
+const ContactSchema = new Schema(
+  {
+    // 🔑 Global identity (cannot clash)
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      validate: {
+        validator: (value) => validator.isEmail(value),
+        message: "Please provide a valid email address.",
+      },
+    },
 
-// Indexes for performance
-ContactSchema.index({ "listAssociations.listId": 1 });
+    // Global "do not contact" flag (e.g. GDPR/Unsubscribe from all customers)
+    globalOptOut: { type: Boolean, default: false },
+
+    // Which customers have access to this contact
+    connectedCustomerIds: [{ type: Schema.Types.ObjectId, ref: "Customer" }],
+
+    // Per-customer overlays
+    customerProfiles: { type: [CustomerProfileSchema], default: [] },
+    customerEngagements: { type: [CustomerEngagementSchema], default: [] },
+
+    // Lists + automations
+    listMemberships: { type: [ListMembershipSchema], default: [] },
+    automationHistory: { type: [AutomationHistorySchema], default: [] },
+    activeAutomations: { type: [ActiveAutomationsSchema], default: [] },
+
+    // Audit logs + custom fields
+    history: { type: [HistorySchema], default: [] },
+    customFields: { type: [CustomFieldSchema], default: [] },
+
+    createdBy: { type: String, default: "system" },
+    updatedBy: { type: String, default: "system" },
+  },
+  { timestamps: true }
+);
+
+/* ------------------------- Indexes ------------------------- */
+
+ContactSchema.index({ email: 1 }, { unique: true });
+ContactSchema.index({ connectedCustomerIds: 1 });
+ContactSchema.index({ "customerProfiles.customerId": 1 });
+ContactSchema.index({ "customerEngagements.customerId": 1 });
 ContactSchema.index({
-  "automationAssociations.automationId": 1,
-  "automationAssociations.nextStepTime": 1,
-});
-ContactSchema.index({ isActive: 1 });
+  "listMemberships.listId": 1,
+  "listMemberships.customerId": 1,
+}); // For finding contacts in a specific list for a customer
+ContactSchema.index({
+  "automationHistory.flowId": 1,
+  "automationHistory.customerId": 1,
+}); // For finding contacts that have gone through a specific automation for a customer
+ContactSchema.index({
+  "activeAutomations.automationId": 1,
+  "activeAutomations.customerId": 1,
+  "activeAutomations.status": 1,
+}); // For finding active automations for a customer
 
 export default mongoose.models.Contact ||
   mongoose.model("Contact", ContactSchema);

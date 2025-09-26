@@ -1,11 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@100..900&family=Mozilla+Headline:wght@200..700&family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Alan+Sans:wght@300..900&family=Grandstander:ital,wght@0,100..900;1,100..900&family=SUSE+Mono:ital,wght@0,100..800;1,100..800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
   /* font-family: var(--font-urbanist), sans-serif; */
-  font-family: "Mozilla Headline", sans-serif;
+  font-family: "Alan Sans", sans-serif;
   font-weight: 300;
 }
 

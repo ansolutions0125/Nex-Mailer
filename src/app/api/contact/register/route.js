@@ -1,16 +1,24 @@
-// file: /api/contact/register/route.js | next.js 13+ api Route
 import dbConnect from "@/config/mongoConfig";
 import Contact from "@/models/Contact";
 import List from "@/models/List";
-import Stats from "@/models/Stats";
 import Flow from "@/models/Flow";
+import Stats from "@/models/Stats";
 import { calculateWaitDuration } from "@/services/backendHelpers/helpers";
-import mongoose from "mongoose";
+import { anyReqWithAuth } from "@/lib/withAuthFunctions";
 
 export async function POST(req) {
   try {
-    console.log("Starting POST request to create/update contact");
+    const authData = await anyReqWithAuth(req.headers);
+    const customer =
+      authData?.actorType === "customer" ? authData.customer : null;
     await dbConnect();
+
+    if (!customer?._id) {
+      return Response.json(
+        { success: false, message: "Customer not found" },
+        { status: 404 }
+      );
+    }
 
     const {
       fullName,
@@ -22,25 +30,11 @@ export async function POST(req) {
       createdBy = "api",
     } = await req.json();
 
-    let resolvedFullName;
-   
-
-    if (fullName) {
-      resolvedFullName = fullName;
-    } else if (first_name && last_name) {
-      resolvedFullName = first_name + " " + last_name;
-    }
-
-    console.log("Request payload:", {
-      fullName: resolvedFullName,
-      email,
-      listId,
-      source,
-      createdBy,
-    });
+    const resolvedFullName =
+      fullName ||
+      (first_name && last_name ? `${first_name} ${last_name}` : null);
 
     if (!resolvedFullName || !email?.trim()) {
-      console.log("Validation failed: Missing name or email");
       return Response.json(
         { success: false, message: "Name and email are required" },
         { status: 400 }
@@ -49,224 +43,222 @@ export async function POST(req) {
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email?.trim())) {
-      console.log("Validation failed: Invalid email format", email);
       return Response.json(
         { success: false, message: "Invalid email format" },
         { status: 400 }
       );
     }
 
-    const existingContact = await Contact.findOne({
-      email: email.toLowerCase().trim(),
-    });
-    console.log(
-      "Existing contact check:",
-      existingContact ? "Found" : "Not found"
-    );
+    const normalizedEmail = email.toLowerCase().trim();
+    let contact = await Contact.findOne({ email: normalizedEmail });
 
-    if (existingContact) {
-      if (!listId) {
-        // If a listId is not provided for an existing contact, return a success message without adding to a list.
-        return Response.json(
-          {
-            success: true,
-            message: "Contact already exists",
-            existingContactId: existingContact._id,
-          },
-          { status: 200 }
-        );
+    // ─── Existing contact ───
+    if (contact) {
+      // Link customer
+      if (
+        !contact.connectedCustomerIds.some(
+          (id) => id.toString() === customer._id.toString()
+        )
+      ) {
+        contact.connectedCustomerIds.push(customer._id);
       }
 
-      if (!mongoose.isValidObjectId(listId)) {
-        console.log("Invalid listId format:", listId);
-        return Response.json(
-          { success: false, message: "Invalid list ID format" },
-          { status: 400 }
-        );
-      }
-
-      const existingListAssociation = existingContact.listAssociations.find(
-        (assoc) => assoc.listId.toString() === listId.toString()
+      // Upsert profile
+      let profile = contact.customerProfiles.find(
+        (p) => p.customerId.toString() === customer._id.toString()
       );
-
-      if (existingListAssociation) {
-        return Response.json(
-          {
-            success: false,
-            message: "Contact already exists in this list",
-            existingContactId: existingContact._id,
-          },
-          { status: 409 }
-        );
-      }
-
-      const list = await List.findById(listId).populate("automationId");
-      if (!list) {
-        return Response.json(
-          { success: false, message: "List not found" },
-          { status: 404 }
-        );
-      }
-
-      existingContact.listAssociations.push({
-        listId,
-        subscribedAt: new Date(),
-        source,
-      });
-
-      // 📝 Update stats for adding an existing contact to a list
-      await List.findByIdAndUpdate(listId, {
-        $inc: { "stats.totalSubscribers": 1 },
-      });
-
-      if (list.automationId) {
-        const automation = list.automationId;
-        const existingAutomationAssociation =
-          existingContact.automationAssociations.find(
-            (assoc) =>
-              assoc.automationId.toString() === automation._id.toString()
-          );
-
-        if (!existingAutomationAssociation) {
-          const firstStep = automation.steps.find(
-            (step) => step.stepCount === 1
-          );
-          const automationData = {
-            automationId: automation._id,
-            stepNumber: 1,
-            startedAt: new Date(),
-            nextStepTime: new Date(),
-          };
-
-          if (firstStep?.stepType === "waitSubscriber") {
-            const { waitDuration, waitUnit } = firstStep;
-            if (waitDuration && waitUnit) {
-              const waitMs = calculateWaitDuration(waitDuration, waitUnit);
-              if (waitMs > 0) {
-                automationData.nextStepTime = new Date(Date.now() + waitMs);
-                automationData.stepNumber = 2;
-              }
-            }
-          }
-          existingContact.automationAssociations.push(automationData);
-
-          // 📝 Update stats for new automation association
-          await Flow.findByIdAndUpdate(automation._id, {
-            $inc: { "stats.totalUsersProcessed": 1 },
-          });
-        }
-
-        existingContact.automationHistory.push({
-          automationId: automation._id,
-          listId,
-          addedAt: new Date(),
-          status: "active",
+      if (!profile) {
+        contact.customerProfiles.push({
+          customerId: customer._id,
+          fullName: resolvedFullName,
+          isActive: true,
         });
+      } else {
+        profile.fullName = resolvedFullName;
+        profile.isActive = true;
+        profile.updatedAt = new Date();
       }
-      await existingContact.save();
+
+      // Upsert engagement record
+      if (
+        !contact.customerEngagements.some(
+          (e) => e.customerId.toString() === customer._id.toString()
+        )
+      ) {
+        contact.customerEngagements.push({ customerId: customer._id });
+      }
+
+      // Optional: subscribe to list
+      if (listId) {
+        await handleListAndAutomation(
+          contact,
+          listId,
+          customer._id,
+          source,
+          createdBy
+        );
+      }
+
+      await contact.save();
       return Response.json({
         success: true,
-        message: "Contact added to new list successfully",
-        data: existingContact,
+        message: "Contact updated successfully",
+        data: contact,
       });
     }
 
-    console.log("Creating new contact");
+    // ─── New contact ───
     const newContactData = {
-      fullName: resolvedFullName,
-      email: email.toLowerCase().trim(),
-      createdBy,
-    };
-    if (listId) {
-      if (!mongoose.isValidObjectId(listId)) {
-        console.log("Invalid listId format for new contact:", listId);
-        return Response.json(
-          { success: false, message: "Invalid list ID format" },
-          { status: 400 }
-        );
-      }
-      const list = await List.findById(listId).populate("automationId");
-      if (!list) {
-        return Response.json(
-          { success: false, message: "List not found" },
-          { status: 404 }
-        );
-      }
-
-      newContactData.listAssociations = [
+      email: normalizedEmail,
+      connectedCustomerIds: [customer._id],
+      customerProfiles: [
         {
-          listId,
-          subscribedAt: new Date(),
-          source,
+          customerId: customer._id,
+          fullName: resolvedFullName,
+          isActive: true,
         },
-      ];
+      ],
+      customerEngagements: [{ customerId: customer._id }],
+      history: [],
+      activeAutomations: [], // ✅ FIXED
+      automationHistory: [], // ✅ FIXED
+    };
 
-      // 📝 Update stats for a new contact in a list
-      await List.findByIdAndUpdate(listId, {
-        $inc: { "stats.totalSubscribers": 1 },
-      });
-
-      if (list.automationId) {
-        const automation = list.automationId;
-        const firstStep = automation.steps.find((step) => step.stepCount === 1);
-        const automationData = {
-          automationId: automation._id,
-          stepNumber: 1,
-          startedAt: new Date(),
-          nextStepTime: new Date(),
-        };
-
-        if (firstStep?.stepType === "waitSubscriber") {
-          const { waitDuration, waitUnit } = firstStep;
-          if (waitDuration && waitUnit) {
-            const waitMs = calculateWaitDuration(waitDuration, waitUnit);
-            if (waitMs > 0) {
-              automationData.nextStepTime = new Date(Date.now() + waitMs);
-              automationData.stepNumber = 2;
-            }
-          }
-        }
-
-        newContactData.automationAssociations = [automationData];
-        newContactData.automationHistory = [
+    if (listId) {
+      const list = await List.findById(listId).populate("automationId");
+      if (list) {
+        newContactData.listMemberships = [
           {
-            automationId: automation._id,
             listId,
-            addedAt: new Date(),
-            status: "active",
+            customerId: customer._id,
+            isSubscribed: true,
+            subscribedAt: new Date(),
+            source,
           },
         ];
-
-        // 📝 Update stats for a new contact starting an automation
-        await Flow.findByIdAndUpdate(automation._id, {
-          $inc: { "stats.totalUsersProcessed": 1 },
+        newContactData.history.push({
+          customerId: customer._id,
+          type: "subscription",
+          message: `Subscribed to list ${listId}`,
+          data: { listId },
+          createdBy,
         });
+
+        if (list.automationId) {
+          const { activeData, historyData } = buildAutomationData(
+            list.automationId,
+            list._id,
+            customer._id
+          );
+          newContactData.activeAutomations.push(activeData);
+          newContactData.automationHistory.push(historyData);
+        }
       }
     }
 
-    // 📝 Update global stats for total users
     await Stats.findOneAndUpdate(
       { _id: "current" },
       { $inc: { totalUsers: 1 } },
-      { new: true, upsert: true }
+      { upsert: true }
     );
 
-    const contact = await Contact.create(newContactData);
-    console.log("Created new contact:", contact._id);
-
+    contact = await Contact.create(newContactData);
     return Response.json(
       { success: true, message: "Contact created successfully", data: contact },
       { status: 201 }
     );
-  } catch (error) {
-    console.error("Error creating contact:", error);
+  } catch (err) {
+    console.error("Register contact error:", err);
     return Response.json(
-      {
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      },
+      { success: false, message: "Internal server error", error: err.message },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Build automation entry for both activeAutomations & automationHistory
+ */
+function buildAutomationData(flow, listId, customerId) {
+  const firstStep = flow.steps.find((s) => s.stepCount === 1);
+
+  // Active automations entry
+  const activeData = {
+    automationId: flow._id,
+    listId,
+    customerId,
+    startedAt: new Date(),
+    status: "active",
+    stepsCompleted: 0,
+    currentStep: 1,
+    nextStepAt: null,
+  };
+
+  if (firstStep?.stepType === "waitSubscriber") {
+    const waitMs = calculateWaitDuration(
+      firstStep.waitDuration,
+      firstStep.waitUnit
+    );
+    if (waitMs > 0) {
+      activeData.nextStepAt = new Date(Date.now() + waitMs);
+    }
+  }
+
+  // Automation history entry (requires flowId instead of automationId)
+  const historyData = {
+    flowId: flow._id,
+    listId,
+    customerId,
+    startedAt: activeData.startedAt,
+    status: "active",
+    stepsCompleted: 0,
+  };
+
+  return { activeData, historyData };
+}
+
+/**
+ * Handle list subscription + automation linking for existing contacts
+ */
+async function handleListAndAutomation(
+  contact,
+  listId,
+  customerId,
+  source,
+  createdBy
+) {
+  const list = await List.findById(listId).populate("automationId");
+  if (!list) return;
+
+  const existing = contact.listMemberships.find(
+    (m) =>
+      m.listId.toString() === listId &&
+      m.customerId.toString() === customerId.toString()
+  );
+  if (existing) return;
+
+  contact.listMemberships.push({
+    listId,
+    customerId,
+    isSubscribed: true,
+    subscribedAt: new Date(),
+    source,
+  });
+  contact.history.push({
+    customerId,
+    type: "subscription",
+    message: `Subscribed to list ${listId}`,
+    data: { listId },
+    createdBy,
+  });
+
+  if (list.automationId) {
+    const { activeData, historyData } = buildAutomationData(
+      list.automationId,
+      list._id,
+      customerId
+    );
+    contact.activeAutomations.push(activeData);
+    contact.automationHistory.push(historyData);
   }
 }

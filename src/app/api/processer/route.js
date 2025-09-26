@@ -1,4 +1,3 @@
-import axios from "axios";
 import { NextResponse } from "next/server";
 import dbConnect from "@/config/mongoConfig";
 import { getProcessingSettings } from "@/services/getProcessingSettings";
@@ -19,19 +18,23 @@ export async function GET(req) {
       createNewRoutes,
     } = await getProcessingSettings();
 
-    let now = new Date();
+    const now = new Date();
+
+    // Find contacts where any active automation is due
     const contacts = await Contact.find({
-      "automationAssociations.nextStepTime": { $lte: now },
-      isActive: true,
+      "activeAutomations.nextStepAt": { $lte: now },
+      "activeAutomations.status": "active",
     }).limit(fetchBatchSizePerProcess);
 
-    console.log(contacts);
+    console.log("Due contacts:", contacts.length);
+
     return NextResponse.json({
       success: true,
+      count: contacts.length,
       contacts,
     });
   } catch (error) {
-    console.error("Error processing initially:", error);
+    console.error("Error processing automations:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

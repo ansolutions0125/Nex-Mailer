@@ -80,7 +80,8 @@ async function computeCustomerStats(customerId) {
 
   // Contacts across all customer lists
   const totalContacts = await Contact.countDocuments({
-    "listAssociations.listId": { $in: listIds },
+    "listMemberships.listId": { $in: listIds },
+    "listMemberships.isSubscribed": true,
   });
 
   // Emails sent for flows under these websites

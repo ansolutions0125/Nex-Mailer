@@ -378,13 +378,26 @@ const Lists = () => {
       };
 
       try {
-        const response = await fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadData),
-        });
+        let listsRes;
+        if (customer && customer._id && customerToken) {
+          listsRes = await fetchWithAuthCustomer({
+            url,
+            method: method,
+            customer,
+            token: customerToken,
+            payload: payloadData,
+          });
+        } else if (admin && admin._id && adminToken) {
+          listsRes = await fetchWithAuthAdmin({
+            url,
+            method: method,
+            admin,
+            token: adminToken,
+            payload: payloadData,
+          });
+        }
 
-        if (!response.ok) {
+        if (!listsRes.ok) {
           const error = await response.json();
           throw new Error(error.message || "Failed to save list.");
         }
@@ -464,28 +477,28 @@ const Lists = () => {
     setEditingMiniId(null);
     setFormData({
       name: "",
-      description: "", 
+      description: "",
       isActive: true,
       logo: "",
       automationId: "",
     });
-    
+
     setModalLoading(true);
     try {
       let response;
       if (customer && customer._id && customerToken) {
         response = await fetchWithAuthCustomer({
           url: "/api/work-flow/flow",
-          method: "GET", 
+          method: "GET",
           customer,
-          token: customerToken
+          token: customerToken,
         });
       } else if (admin && admin._id && adminToken) {
         response = await fetchWithAuthAdmin({
           url: "/api/work-flow/flow",
           method: "GET",
           admin,
-          token: adminToken
+          token: adminToken,
         });
       }
 

@@ -80,7 +80,8 @@ async function computeCustomerStats(customerId) {
 
   // Contacts across all customer lists
   const totalContacts = await Contact.countDocuments({
-    "listAssociations.listId": { $in: listIds },
+    "listMemberships.listId": { $in: listIds },
+    "listMemberships.isSubscribed": true,
   });
 
   // Emails sent for flows under these websites
@@ -118,7 +119,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const _id = searchParams.get("_id");
     const slug = searchParams.get("slug");
-    const withStats = searchParams.get("withStats") === "true"; 
+    const withStats = searchParams.get("withStats") === "true";
     const expand = searchParams.get("expand"); // 'plan'
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.max(1, parseInt(searchParams.get("limit") || "20", 10));
@@ -147,7 +148,7 @@ export async function GET(request) {
 
     const [items, totalItems] = await Promise.all([
       Customer.find({})
-        .populate('planId')
+        .populate("planId")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -164,16 +165,18 @@ export async function GET(request) {
 
     const now = new Date();
 
-    items.forEach(customer => {
+    items.forEach((customer) => {
       if (!customer.planId) {
         nonPlanHolders.push(sanitizeCustomer(customer));
       } else {
         // Check plan status
         const planEndDate = customer.emailLimits?.periodEnd;
         const isExpired = planEndDate && planEndDate < now;
-        const isTrialPlan = customer.planSnapshot?.name?.toLowerCase().includes('trial');
-        const hasPendingPayment = customer.paymentStatus === 'pending';
-        const isSuspended = customer.status === 'suspended';
+        const isTrialPlan = customer.planSnapshot?.name
+          ?.toLowerCase()
+          .includes("trial");
+        const hasPendingPayment = customer.paymentStatus === "pending";
+        const isSuspended = customer.status === "suspended";
 
         if (isSuspended) {
           suspendedCustomers.push(sanitizeCustomer(customer));
@@ -195,29 +198,29 @@ export async function GET(request) {
         groups: [
           {
             label: "Active Plan Customers",
-            customers: activePlanHolders
+            customers: activePlanHolders,
           },
           {
             label: "Trial Plan Customers",
-            customers: trialPlanHolders
+            customers: trialPlanHolders,
           },
           {
             label: "Expired Plan Customers",
-            customers: expiredPlanHolders
+            customers: expiredPlanHolders,
           },
           {
             label: "Pending Payment Customers",
-            customers: pendingPaymentCustomers
+            customers: pendingPaymentCustomers,
           },
           {
             label: "Suspended Customers",
-            customers: suspendedCustomers
+            customers: suspendedCustomers,
           },
           {
             label: "Non-plan Customers",
-            customers: nonPlanHolders
-          }
-        ]
+            customers: nonPlanHolders,
+          },
+        ],
       },
       pagination: {
         currentPage: page,
@@ -441,7 +444,9 @@ export async function POST(request) {
       const { email, password, userAgent = "", ip = "" } = body || {};
 
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
       if (!user) {
         // consistent with admin: vague error
@@ -538,7 +543,9 @@ export async function POST(request) {
 
       const { email } = body || {};
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
 
       // Vague response to avoid account enumeration
@@ -574,7 +581,9 @@ export async function POST(request) {
 
       const { email, token, userAgent = "", ip = "" } = body || {};
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
 
       if (!user || !user.magicLink?.token) {
@@ -666,7 +675,9 @@ export async function POST(request) {
     if (action === "forgot") {
       const { email } = body || {};
       const user = await Customer.findOne({
-        email: String(email || "").trim().toLowerCase(),
+        email: String(email || "")
+          .trim()
+          .toLowerCase(),
       });
 
       // Vague, non-enumerating response

@@ -3,6 +3,7 @@
 import dbConnect from "@/config/mongoConfig";
 import List from "@/models/List";
 import { NextResponse } from "next/server";
+import Flow from "@/models/Flow"; // Import Flow model
 import Customer from "@/models/Customer";
 import { validateAccessBothAdminCustomer } from "@/lib/withAuthFunctions";
 
@@ -20,9 +21,9 @@ export async function GET(request) {
       // For customer, only fetch list if it belongs to them
       if (authData?.customer?._id) {
         lists = await List.findOne({
-          _id: listId,
+          _id: listId, // Fix: Use _id for listId
           customerId: authData.customer._id,
-        }).populate('automationId customerId');
+        }).populate("automationId customerId");
       }
 
       if (!lists) {
@@ -38,15 +39,19 @@ export async function GET(request) {
           lists = await List.find({
             customerId: authData.customer._id,
             automationId: null,
-          }).populate('automationId customerId');
+          }).populate("automationId customerId");
         } else {
-          lists = await List.find({ customerId: authData.customer._id }).populate('automationId customerId');
+          lists = await List.find({
+            customerId: authData.customer._id,
+          }).populate("automationId customerId");
         }
       } else {
         if (notConnected === "true") {
-          lists = await List.find({ automationId: null }).populate('automationId customerId');
+          lists = await List.find({ automationId: null }).populate(
+            "automationId customerId"
+          );
         } else {
-          lists = await List.find({}).populate('automationId customerId');
+          lists = await List.find({}).populate("automationId customerId");
         }
       }
     }
