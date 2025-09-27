@@ -1,28 +1,48 @@
+// models/Steps.js
+import Contact from "@/models/Contact";
+import EmailQueue from "@/models/EmailQueue";
 import Stats from "@/models/Stats";
+import axios from "axios";
 
+/* ---------------------------------------------------------- */
+/* Template variable replacement                              */
+/* ---------------------------------------------------------- */
 function replaceTemplateVariables(template, contact) {
   if (!template) return "";
-  return template.replace(/\{\{\s*(email|fullName)\s*\}\}/g, (match, p1) => {
-    switch (p1) {
-      case "email":
-        return contact.email;
-      case "fullName":
-        return contact.fullName;
-      default:
-        return match;
-    }
+  return template.replace(/\{\{\s*(email|fullName)\s*\}\}/g, (_, key) => {
+    return key === "email" ? contact.email : contact.fullName || "";
   });
 }
 
-/**
- * Processes a 'sendWebhook' step.
- * @param {object} contact - The contact object.
- * @param {object} automation - The automation association.
- * @param {object} step - The webhook step details.
- */
+/* ---------------------------------------------------------- */
+/* History helpers  (only touch real fields)                  */
+/* ---------------------------------------------------------- */
+async function updateAutomationStatus(contactId, automationAssoc, status) {
+  const now = new Date();
+  const historyEntry = {
+    flowId: automationAssoc.automationId,
+    listId: automationAssoc.listId || null,
+    customerId: automationAssoc.customerId,
+    startedAt: automationAssoc.startedAt,
+    completedAt: now,
+    status,
+    stepsCompleted:
+      automationAssoc.stepNumber ?? automationAssoc.currentStep ?? 0,
+  };
+
+  await Contact.updateOne(
+    { _id: contactId },
+    { $push: { automationHistory: historyEntry } }
+  );
+}
+
+/* ---------------------------------------------------------- */
+/* STEP PROCESSORS                                            */
+/* ---------------------------------------------------------- */
+
 export async function processWebhookStep(contact, automation, step) {
   try {
-    const webhookData = {
+    const payload = {
       contact: {
         email: contact.email,
         fullName: contact.fullName,
@@ -34,61 +54,61 @@ export async function processWebhookStep(contact, automation, step) {
       },
       timestamp: new Date().toISOString(),
     };
+
     const params = {};
-    if (step.queryParams && step.queryParams.length > 0) {
-      for (const param of step.queryParams) {
-        if (param.type === "email") {
-          params[param.key] = contact.email;
-        } else {
-          params[param.key] = replaceTemplateVariables(param.value, contact);
-        }
-      }
-    }
-    const config = {
+    (step.queryParams || []).forEach((p) => {
+      params[p.key] =
+        p.type === "email"
+          ? contact.email
+          : replaceTemplateVariables(p.value, contact);
+    });
+
+    const cfg = {
       method: step.requestMethod || "POST",
       url: step.webhookUrl,
       headers: { "Content-Type": "application/json" },
-      timeout: 30000,
+      timeout: 10000,
     };
-    if (step.requestMethod === "GET") {
-      config.params = params;
-    } else {
-      config.data = { ...webhookData, ...params };
-    }
-    await axios(config);
-    console.log(`Webhook sent successfully for contact ${contact._id}`);
+    cfg[step.requestMethod === "GET" ? "params" : "data"] = {
+      ...payload,
+      ...params,
+    };
 
-    // Update global webhook stats
+    await axios(cfg);
     await Stats.findOneAndUpdate(
       { _id: "current" },
       { $inc: { totalWebhooksSent: 1 } },
-      { new: true, upsert: true }
+      { upsert: true }
     );
-  } catch (error) {
-    console.error(`Webhook failed for contact ${contact._id}:`, error.message);
-    throw error;
+  } catch (err) {
+    console.error(`Webhook failed for contact ${contact._id}:`, err.message);
+    throw err;
   }
 }
 
-/**
- * Processes a 'sendMail' step by creating an email queue entry.
- * @param {object} contact - The contact object.
- * @param {object} automation - The automation association.
- * @param {object} step - The email step details.
- * @param {object} automation - The parent automation/flow object.
- */
-export async function processEmailStep(
-  contact,
-  automation,
-  step,
-  automation
-) {
+export async function processEmailStep(contact, automation, step, flow) {
   try {
+    /* ---------- 1.  Decide WHICH customer is running this automation ---------- */
+    const customerId = automation.customerId || flow.customerId; // both exist – pick one
+    if (!customerId) throw new Error("No customer linked to this automation");
+
+    /* ---------- 2.  Get plan → serverId ---------- */
+    const plan = await mongoose.model("Plan").findOne({ customerId }).lean(); // PlanSchema has customerId
+    let serverId = null;
+    if (plan?.serverId) {
+      serverId = plan.serverId; // customer-specific server
+    } else {
+      // Fallback: first global server (or null – queue worker can still pick later)
+      const srv = await mongoose.model("Server").findOne().lean();
+      serverId = srv?._id || null;
+    }
+
+    /* ---------- 3.  Write queue row ---------- */
     await EmailQueue.create({
       contactId: contact._id,
-      serverId: null,
+      serverId, // ← chosen above
       flowId: automation.automationId,
-      listId: automation.listId || automation.listId,
+      listId: automation.listId || flow.listId,
       stepId: step._id.toString(),
       templateId: step.sendMailTemplate,
       email: contact.email,
@@ -98,7 +118,7 @@ export async function processEmailStep(
       ),
       variables: new Map([
         ["fullName", contact.fullName || ""],
-        ["email", contact.email || ""],
+        ["email", contact.email],
       ]),
       status: "pending",
       nextAttempt: new Date(),
@@ -107,115 +127,42 @@ export async function processEmailStep(
         stepNumber: automation.stepNumber,
       },
     });
-    console.log(`Email queued successfully for contact ${contact._id}`);
 
-    // Update global email stats
     await Stats.findOneAndUpdate(
       { _id: "current" },
       { $inc: { totalMailSent: 1 } },
-      { new: true, upsert: true }
+      { upsert: true }
     );
-  } catch (error) {
-    console.error(
-      `Email step failed for contact ${contact._id}:`,
-      error.message
-    );
-    throw error;
+  } catch (err) {
+    console.error(`Email step failed for contact ${contact._id}:`, err.message);
+    throw err;
   }
 }
 
-/**
- * Processes a 'moveSubscriber' step. This is a terminal step.
- * @param {object} contact - The contact object.
- * @param {object} automation - The automation association.
- * @param {object} step - The move step details.
- */
 export async function processMoveStep(contact, automation, step) {
-  try {
-    const listToMoveToId = step.targetListId;
-    if (!listToMoveToId) {
-      throw new Error("Target list ID not specified for move step.");
-    }
+  const listToMoveToId = step.targetListId;
+  if (!listToMoveToId)
+    throw new Error("Target list ID not specified for move step.");
 
-    // Log the 'removed' status for the old list
-    if (automation.listId) {
-      await updateListHistory(contact._id, automation.listId, "removed");
-    }
-
-    await updateListHistory(contact._id, listToMoveToId, "added");
-
-    // Atomically update status
-    await updateAutomationStatus(contact._id, automation, "completed");
-
-    console.log(
-      `Contact ${contact._id} moved to list ${listToMoveToId} and automation completed.`
-    );
-  } catch (error) {
-    console.error(
-      `Move step failed for contact ${contact._id}:`,
-      error.message
-    );
-    throw error;
-  }
+  // (Optional) Add real list-membership update here in the future
+  await updateAutomationStatus(contact._id, automation, "completed");
 }
 
-/**
- * Processes a 'removeSubscriber' step. This is a terminal step.
- * @param {string} contactId - The contact's ID.
- * @param {object} automation - The automation association.
- * @param {object} step - The remove step details.
- */
 export async function processRemoveStep(contactId, automation, step) {
-  try {
-    const listToRemoveFromId = step.listToRemoveFrom;
-    if (!listToRemoveFromId) {
-      throw new Error("Target list ID not specified for remove step.");
-    }
+  const listToRemoveFromId = step.listToRemoveFrom;
+  if (!listToRemoveFromId)
+    throw new Error("Target list ID not specified for remove step.");
 
-    // Log the 'removed' status for the list
-    await updateListHistory(contactId, listToRemoveFromId, "removed");
-
-    // Atomically update status
-    await updateAutomationStatus(contactId, automation, "completed");
-
-    console.log(
-      `Contact ${contactId} removed from list ${listToRemoveFromId} and automation completed.`
-    );
-  } catch (error) {
-    console.error(
-      `Remove step failed for contact ${contactId}:`,
-      error.message
-    );
-    throw error;
-  }
+  // (Optional) Add real list-removal here in the future
+  await updateAutomationStatus(contactId, automation, "completed");
 }
 
-/**
- * Processes a 'deleteSubscriber' step. This is a terminal step.
- * @param {string} contactId - The contact's ID.
- * @param {object} automation - The automation association.
- */
 export async function processDeleteStep(contactId, automation) {
-  try {
-    // Soft-delete the contact by setting isActive to false
-    await Contact.updateOne({ _id: contactId }, { $set: { isActive: false } });
-
-    // Atomically update status
-    await updateAutomationStatus(contactId, automation, "completed");
-
-    // Update global stats for deleted users
-    await Stats.findOneAndUpdate(
-      { _id: "current" },
-      { $inc: { totalUsersDeleted: 1 } },
-      { new: true, upsert: true }
-    );
-
-    console.log(`Contact ${contactId} soft-deleted and automation completed.`);
-  } catch (error) {
-    console.error(
-      `Delete step failed for contact ${contactId}:`,
-      error.message
-    );
-    throw error;
-  }
+  await Contact.updateOne({ _id: contactId }, { $set: { isActive: false } });
+  await updateAutomationStatus(contactId, automation, "completed");
+  await Stats.findOneAndUpdate(
+    { _id: "current" },
+    { $inc: { totalUsersDeleted: 1 } },
+    { upsert: true }
+  );
 }

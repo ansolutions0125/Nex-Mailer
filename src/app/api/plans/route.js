@@ -32,7 +32,10 @@ export async function GET(request) {
       const filter = _id ? { _id } : { name };
       const plan = await Plan.findOne(filter).lean();
       if (!plan) {
-        return NextResponse.json({ success: false, message: "Plan not found" }, { status: 404 });
+        return NextResponse.json(
+          { success: false, message: "Plan not found" },
+          { status: 404 }
+        );
       }
       return NextResponse.json({
         success: true,
@@ -49,7 +52,10 @@ export async function GET(request) {
       Plan.countDocuments(query),
     ]);
 
-    const data = items.map((p) => ({ ...p, effectivePrice: computeEffectivePrice(p) }));
+    const data = items.map((p) => ({
+      ...p,
+      effectivePrice: computeEffectivePrice(p),
+    }));
 
     return NextResponse.json({
       success: true,
@@ -63,7 +69,10 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error("GET Plans Error:", error);
-    return NextResponse.json({ success: false, message: "Failed to fetch plans." }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch plans." },
+      { status: 500 }
+    );
   }
 }
 
@@ -75,23 +84,45 @@ export async function POST(request) {
 
     // Validate
     if (!body.name || !body.length) {
-      return NextResponse.json({ success: false, message: "name and length are required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "name and length are required" },
+        { status: 400 }
+      );
     }
     if (typeof body.price !== "number" || body.price < 0) {
-      return NextResponse.json({ success: false, message: "price must be a non-negative number" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "price must be a non-negative number" },
+        { status: 400 }
+      );
     }
     if (body.discounted) {
-      if (typeof body.discount !== "number" || body.discount < 0 || body.discount > 100) {
-        return NextResponse.json({ success: false, message: "discount must be between 0 and 100" }, { status: 400 });
+      if (
+        typeof body.discount !== "number" ||
+        body.discount < 0 ||
+        body.discount > 100
+      ) {
+        return NextResponse.json(
+          { success: false, message: "discount must be between 0 and 100" },
+          { status: 400 }
+        );
       }
     } else {
       body.discount = 0;
     }
-    if (body.emailLimit != null && (typeof body.emailLimit !== "number" || body.emailLimit < 0)) {
-      return NextResponse.json({ success: false, message: "emailLimit must be a non-negative number" }, { status: 400 });
+    if (
+      body.emailLimit != null &&
+      (typeof body.emailLimit !== "number" || body.emailLimit < 0)
+    ) {
+      return NextResponse.json(
+        { success: false, message: "emailLimit must be a non-negative number" },
+        { status: 400 }
+      );
     }
     if (body.currency && !/^[A-Z]{3}$/.test(body.currency)) {
-      return NextResponse.json({ success: false, message: "currency must be a 3-letter code" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "currency must be a 3-letter code" },
+        { status: 400 }
+      );
     }
 
     const plan = await Plan.create({
@@ -105,6 +136,7 @@ export async function POST(request) {
       length: body.length, // "1month" | "3month" | "6month" | "1year"
       emailLimit: body.emailLimit || 0,
       features: Array.isArray(body.features) ? body.features.map(String) : [],
+      serverId: body.serverId, // Add serverId to the plan creation
       isActive: body.isActive !== undefined ? Boolean(body.isActive) : true,
     });
 
@@ -114,9 +146,15 @@ export async function POST(request) {
   } catch (error) {
     console.error("POST Plans Error:", error);
     if (error.code === 11000) {
-      return NextResponse.json({ success: false, message: "A plan with this name already exists." }, { status: 409 });
+      return NextResponse.json(
+        { success: false, message: "A plan with this name already exists." },
+        { status: 409 }
+      );
     }
-    return NextResponse.json({ success: false, message: "Failed to create plan." }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to create plan." },
+      { status: 500 }
+    );
   }
 }
 
@@ -128,38 +166,83 @@ export async function PUT(request) {
     const { planId, ...update } = body;
 
     if (!planId || !mongoose.Types.ObjectId.isValid(planId)) {
-      return NextResponse.json({ success: false, message: "Valid planId is required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "Valid planId is required" },
+        { status: 400 }
+      );
     }
 
     if (update.slogon && !update.slogan) {
       update.slogan = update.slogon;
       delete update.slogon;
     }
-    if (update.price !== undefined && (typeof update.price !== "number" || update.price < 0)) {
-      return NextResponse.json({ success: false, message: "price must be a non-negative number" }, { status: 400 });
+    if (
+      update.price !== undefined &&
+      (typeof update.price !== "number" || update.price < 0)
+    ) {
+      return NextResponse.json(
+        { success: false, message: "price must be a non-negative number" },
+        { status: 400 }
+      );
     }
-    if (update.discounted !== undefined && !update.discounted) update.discount = 0;
-    if (update.discount !== undefined && (update.discount < 0 || update.discount > 100)) {
-      return NextResponse.json({ success: false, message: "discount must be between 0 and 100" }, { status: 400 });
+    if (update.discounted !== undefined && !update.discounted)
+      update.discount = 0;
+    if (
+      update.discount !== undefined &&
+      (update.discount < 0 || update.discount > 100)
+    ) {
+      return NextResponse.json(
+        { success: false, message: "discount must be between 0 and 100" },
+        { status: 400 }
+      );
     }
-    if (update.emailLimit !== undefined && (typeof update.emailLimit !== "number" || update.emailLimit < 0)) {
-      return NextResponse.json({ success: false, message: "emailLimit must be a non-negative number" }, { status: 400 });
+    if (
+      update.emailLimit !== undefined &&
+      (typeof update.emailLimit !== "number" || update.emailLimit < 0)
+    ) {
+      return NextResponse.json(
+        { success: false, message: "emailLimit must be a non-negative number" },
+        { status: 400 }
+      );
     }
     if (update.currency && !/^[A-Z]{3}$/.test(update.currency)) {
-      return NextResponse.json({ success: false, message: "currency must be a 3-letter code" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "currency must be a 3-letter code" },
+        { status: 400 }
+      );
     }
-    if (update.length && !["1month", "3month", "6month", "1year"].includes(update.length)) {
-      return NextResponse.json({ success: false, message: "length must be one of 1month, 3month, 6month, 1year" }, { status: 400 });
+    if (
+      update.length &&
+      !["1month", "3month", "6month", "1year"].includes(update.length)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "length must be one of 1month, 3month, 6month, 1year",
+        },
+        { status: 400 }
+      );
     }
 
     if (update.name) update.name = update.name.trim();
     if (update.slogan) update.slogan = update.slogan.trim();
     if (update.description) update.description = update.description.trim();
     if (update.currency) update.currency = update.currency.toUpperCase();
-    if (Array.isArray(update.features)) update.features = update.features.map(String);
+    if (Array.isArray(update.features))
+      update.features = update.features.map(String);
 
-    const updated = await Plan.findByIdAndUpdate(planId, update, { new: true, runValidators: true }).lean();
-    if (!updated) return NextResponse.json({ success: false, message: "Plan not found" }, { status: 404 });
+    // Add serverId to the update
+    if (update.serverId) update.serverId = update.serverId;
+
+    const updated = await Plan.findByIdAndUpdate(planId, update, {
+      new: true,
+      runValidators: true,
+    }).lean();
+    if (!updated)
+      return NextResponse.json(
+        { success: false, message: "Plan not found" },
+        { status: 404 }
+      );
 
     return NextResponse.json({
       success: true,
@@ -169,9 +252,15 @@ export async function PUT(request) {
   } catch (error) {
     console.error("PUT Plans Error:", error);
     if (error.code === 11000) {
-      return NextResponse.json({ success: false, message: "A plan with this name already exists." }, { status: 409 });
+      return NextResponse.json(
+        { success: false, message: "A plan with this name already exists." },
+        { status: 409 }
+      );
     }
-    return NextResponse.json({ success: false, message: "Failed to update plan." }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to update plan." },
+      { status: 500 }
+    );
   }
 }
 
@@ -183,15 +272,28 @@ export async function DELETE(request) {
     const _id = searchParams.get("_id");
 
     if (!_id || !mongoose.Types.ObjectId.isValid(_id)) {
-      return NextResponse.json({ success: false, message: "Valid _id is required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "Valid _id is required" },
+        { status: 400 }
+      );
     }
 
     const deleted = await Plan.findByIdAndDelete(_id);
-    if (!deleted) return NextResponse.json({ success: false, message: "Plan not found" }, { status: 404 });
+    if (!deleted)
+      return NextResponse.json(
+        { success: false, message: "Plan not found" },
+        { status: 404 }
+      );
 
-    return NextResponse.json({ success: true, message: "Plan deleted successfully" });
+    return NextResponse.json({
+      success: true,
+      message: "Plan deleted successfully",
+    });
   } catch (error) {
     console.error("DELETE Plans Error:", error);
-    return NextResponse.json({ success: false, message: "Failed to delete plan." }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to delete plan." },
+      { status: 500 }
+    );
   }
 }

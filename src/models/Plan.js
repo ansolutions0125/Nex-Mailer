@@ -32,6 +32,7 @@ const PlanSchema = new Schema(
 
     // Quotas & features
     emailLimit: { type: Number, default: 0, min: 0 },
+    serverId: { type: Schema.Types.ObjectId, ref: "Server", required: true },
     features: [{ type: String, trim: true }],
 
     // Operational

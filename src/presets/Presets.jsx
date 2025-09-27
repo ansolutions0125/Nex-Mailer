@@ -39,37 +39,37 @@ export const SERVER_PRESETS = {
       HOST: {
         type: "text",
         value: "",
-        label: "SMTP server hostname (e.g. smtp.gmail.com)"
+        label: "SMTP server hostname (e.g. smtp.gmail.com)",
       },
       PORT: {
-        type: "number", 
+        type: "number",
         value: "",
-        label: "SMTP port (e.g. 587 for TLS, 465 for SSL)"
+        label: "SMTP port (e.g. 587 for TLS, 465 for SSL)",
       },
       FROM_EMAIL: {
         type: "text",
         value: "",
-        label: "Sender email address"
+        label: "Sender email address",
       },
       SECURE: {
         type: "boolean",
         value: "",
-        label: "Use TLS/SSL"
+        label: "Use TLS/SSL",
       },
       USERNAME: {
         type: "text",
         value: "",
-        label: "SMTP authentication username"
+        label: "SMTP authentication username",
       },
       PASSWORD: {
         type: "text",
         value: "",
-        label: "SMTP authentication password"
+        label: "SMTP authentication password",
       },
       TLS: {
         type: "boolean",
         value: "",
-        label: "Enable TLS"
+        label: "Enable TLS",
       },
     },
     logo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTKN3yK3hFEVJPP5cGaLUgxPyw5S5sdwqBuSg&s",
@@ -80,28 +80,28 @@ export const SERVER_PRESETS = {
       API_KEY: {
         type: "text",
         value: "",
-        label: "Elastic Email API key"
+        label: "Elastic Email API key",
       },
       FROM_EMAIL: {
         type: "text",
         value: "",
-        label: "Default Email From"
+        label: "Default Email From",
       },
       FROM_NAME: {
         type: "text",
         value: "",
-        label: "Sender name"
+        label: "Sender name",
       },
       TRACKING: {
         type: "boolean",
         value: true,
-        label: "Enable email tracking"
+        label: "Enable email tracking",
       },
       IS_TRANSACTIONAL: {
         type: "boolean",
         value: true,
-        label: "Is the email transactional"
-      }
+        label: "Is the email transactional",
+      },
     },
     logo: "https://www.sender.net/wp-content/uploads/2025/07/Elastic-email.png",
   },
@@ -184,3 +184,23 @@ export const formConfigurations = {
     },
   },
 };
+
+export async function uploadToImgbb(file, apiKey) {
+  if (!file) throw new Error("No file provided");
+  if (!apiKey) throw new Error("ImgBB API key is required");
+
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error?.message || "Failed to upload image");
+  }
+
+  return data.data; // contains .url, .display_url, .thumb, etc.
+}

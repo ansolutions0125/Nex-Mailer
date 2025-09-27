@@ -157,7 +157,20 @@ const createNavigationItems = (customer, admin) => {
       ],
       order: 4,
     },
-    { icon: <LuPackage />, text: "Plans", href: "/plans", order: 5 },
+    {
+      icon: <LuPackage />,
+      text: "Plans",
+      dropdown: [
+        { icon: <LuPackage />, text: "All Plans", href: "/plans", order: 1 },
+        {
+          icon: <FolderPen />,
+          text: "Add New Plan",
+          href: "/plans/edit",
+          order: 2,
+        },
+      ],
+      order: 5,
+    },
     {
       icon: <ShieldUser />,
       text: "Admin Management",

@@ -27,7 +27,7 @@ const ConfirmationModal = ({
           <button onClick={onCancel} className="btn btn-md hover:bg-zinc-200">
             {cancelText}
           </button>
-          <button onClick={onConfirm} className="btn btn-md btn-primary">
+          <button onClick={onConfirm} className="btn btn-md btn-delete">
             {confirmText}
           </button>
         </div>

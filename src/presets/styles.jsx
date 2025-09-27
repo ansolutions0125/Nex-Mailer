@@ -19,7 +19,7 @@ export const labelStyles = (type) => {
 };
 
 export const inputStyles =
-  "w-full bg-zinc-50 rounded-sm border border-b-2 border-zinc-300 focus:border-primary text-sm px-3 py-2 text-zinc-800 outline-none placeholder-zinc-500 transition-all";
+  "w-full bg-zinc-50 rounded-sm border border-b-2 border-zinc-300 focus:border-primary text-xs px-3 py-2 text-zinc-800 outline-none placeholder-zinc-500 transition-all";
 
 export const KeyValue = ({ label, value }) => {
   return (
@@ -51,10 +51,8 @@ export const LoadingSpinner = ({
     {type === "page" && (
       <h1
         className={` ${
-          type === "page"
-            ? "text-xl lg:text-3xl"
-            : "text-sm md:text-base"
-        } font-medium text-zinc-600 animate-pulse mb-2`}
+          type === "page" ? "text-xl lg:text-3xl" : "text-sm md:text-base"
+        }  text-zinc-600 animate-pulse mb-2`}
       >
         {title}
       </h1>
@@ -88,7 +86,7 @@ export const LoadingSpinner = ({
     <h1
       className={`${
         type === "page" ? "hidden" : "text-sm md:text-base xl:text-lg"
-      } font-medium text-zinc-600 animate-pulse`}
+      }  text-zinc-600 animate-pulse`}
     >
       {title}
     </h1>
@@ -115,7 +113,7 @@ export const LoadingSpinner = ({
 
 export const EmptyState = ({
   title = "Not Found",
-  description = 'Click "Do Click Button" to get started.',
+  description = 'Click "Add Button" to get started.',
 }) => (
   <div className="center-flex flex-col text-center p-10 text-zinc-500">
     <img src="/bg-images/empty-state.jpg" alt="Empty-State" className="h-40" />
