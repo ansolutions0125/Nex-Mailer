@@ -185,12 +185,19 @@ export const formConfigurations = {
   },
 };
 
-export async function uploadToImgbb(file, apiKey) {
-  if (!file) throw new Error("No file provided");
+export async function uploadToImgbb(fileOrUrl, apiKey) {
+  if (!fileOrUrl) throw new Error("No file or URL provided");
   if (!apiKey) throw new Error("ImgBB API key is required");
 
-  const formData = new FormData();
-  formData.append("image", file);
+  let formData = new FormData();
+
+  if (typeof fileOrUrl === "string") {
+    // If it's a URL, append it directly
+    formData.append("image", fileOrUrl);
+  } else {
+    // If it's a File object
+    formData.append("image", fileOrUrl);
+  }
 
   const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
     method: "POST",

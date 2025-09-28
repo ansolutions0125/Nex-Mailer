@@ -8,7 +8,7 @@ import Customer from "@/models/Customer";
 import { validateAccessBothAdminCustomer } from "@/lib/withAuthFunctions";
 
 export async function GET(request) {
-  const authData = validateAccessBothAdminCustomer(request);
+  const authData = await validateAccessBothAdminCustomer(request);
   await dbConnect();
 
   try {
@@ -19,10 +19,11 @@ export async function GET(request) {
     let lists;
     if (listId) {
       // For customer, only fetch list if it belongs to them
-      if (authData?.customer?._id) {
+      if (authData?.customer?._id || authData?.admin?._id) {
+        // Allow admin to fetch any list by ID
         lists = await List.findOne({
           _id: listId, // Fix: Use _id for listId
-          customerId: authData.customer._id,
+          ...(authData?.customer?._id && { customerId: authData.customer._id }), // Filter by customerId only if customer
         }).populate("automationId customerId");
       }
 
@@ -34,25 +35,31 @@ export async function GET(request) {
       }
     } else {
       // For customer, only fetch their lists
+      const query = {};
+
+      // If authenticated as a customer, restrict to their lists
       if (authData?.customer?._id) {
-        if (notConnected === "true") {
-          lists = await List.find({
-            customerId: authData.customer._id,
-            automationId: null,
-          }).populate("automationId customerId");
-        } else {
-          lists = await List.find({
-            customerId: authData.customer._id,
-          }).populate("automationId customerId");
-        }
+        query.customerId = authData.customer._id;
+      }
+
+      // If 'notConnected' is true, filter by automationId: null
+      if (notConnected === "true") {
+        query.automationId = null;
+      }
+
+      // If authenticated as an admin, and no customerId is specified in the query,
+      // and notConnected is not true, then fetch all lists.
+      // Otherwise, the query object will already contain the necessary filters.
+      if (
+        authData?.admin?._id &&
+        !query.customerId &&
+        notConnected !== "true"
+      ) {
+        // Admin can see all lists if no specific customer filter is applied
+        lists = await List.find({}).populate("automationId customerId");
       } else {
-        if (notConnected === "true") {
-          lists = await List.find({ automationId: null }).populate(
-            "automationId customerId"
-          );
-        } else {
-          lists = await List.find({}).populate("automationId customerId");
-        }
+        // Apply filters based on customer or notConnected status
+        lists = await List.find(query).populate("automationId customerId");
       }
     }
 

@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { ImSpinner5 } from "react-icons/im";
+
 export const labelStyles = (type) => {
   const baseStyles = "font-semibold text-zinc-500 uppercase tracking-wider";
   switch (type) {
@@ -32,6 +35,72 @@ export const KeyValue = ({ label, value }) => {
   );
 };
 
+// export const FilesDropdownZone = ({
+//   title = "Drag & Drop your files here",
+//   subTitle = "or click to browse",
+//   multiple = false,
+//   onFilesSelected,
+//   loading = false,
+//   id = "fileInput",
+// }) => {
+//   const [isDragging, setIsDragging] = useState(false);
+
+//   const handleDragOver = (event) => {
+//     event.preventDefault();
+//     setIsDragging(true);
+//   };
+
+//   const handleDragLeave = () => {
+//     setIsDragging(false);
+//   };
+
+//   const handleDrop = (event) => {
+//     event.preventDefault();
+//     setIsDragging(false);
+//     if (onFilesSelected) {
+//       onFilesSelected(Array.from(event.dataTransfer.files));
+//     }
+//   };
+
+//   const handleFileChange = (event) => {
+//     if (onFilesSelected) {
+//       onFilesSelected(Array.from(event.target.files));
+//     }
+//   };
+
+//   return (
+//     <div
+//       className={`w-full p-4 text-center border-2 border-dashed rounded-md transition-all
+//       ${isDragging ? "border-primary bg-primary/5" : "border-zinc-300"}
+//       ${loading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+//       onDragOver={handleDragOver}
+//       onDragLeave={handleDragLeave}
+//       onDrop={handleDrop}
+//       onClick={() => !loading && document.getElementById(id).click()}
+//     >
+//       <input
+//         id={id}
+//         type="file"
+//         multiple={multiple}
+//         hidden
+//         onChange={handleFileChange}
+//         disabled={loading}
+//       />
+//       {loading ? (
+//         <div className="flex items-center justify-center gap-2 text-zinc-500">
+//           <ImSpinner5 className="animate-spin h-5 w-5" />
+//           <span>Uploading...</span>
+//         </div>
+//       ) : (
+//         <>
+//           <p className="text-sm text-zinc-600">{title}</p>
+//           <p className="text-xs text-zinc-500">{subTitle}</p>
+//         </>
+//       )}
+//     </div>
+//   );
+// };
+
 export const GetUrlParams = () => {
   if (typeof window === "undefined") return {};
   const params = new URLSearchParams(window.location.search);
@@ -57,28 +126,18 @@ export const LoadingSpinner = ({
         {title}
       </h1>
     )}
-    <div
-      className={`${
-        type === "page" && "mb-80 md:mb-32"
-      } flex justify-center items-center relative mb-2`}
-    >
+    <div className={`${type === "page" && "mb-80 md:mb-32"} center-flex mb-2`}>
       <div
-        className={`${
+        className={`border-2 ${
           type === "page"
-            ? "h-20 w-20 lg:w-24 lg:h-24"
-            : "h-10 w-10 lg:w-14 lg:h-14"
-        } border-2 border-zinc-300 border-t-zinc-700 animate-spin rounded-full`}
+            ? "h-20 w-20 lg:w-24 lg:h-24 border-4"
+            : "h-10 w-10 lg:w-12 lg:h-12"
+        }  border-zinc-300 border-t-zinc-700 animate-spin rounded-full`}
       />
+
       <div
         className={`${
-          type === "page"
-            ? "h-16 w-16 lg:w-20 lg:h-20"
-            : "h-8 w-8 lg:w-10 lg:h-10"
-        } absolute border-2 border-zinc-300 border-t-zinc-700 animate-spin rounded-full`}
-      />
-      <div
-        className={`${
-          type === "page" ? "h-12 w-12" : "h-6 w-6"
+          type === "page" ? "h-14 w-14" : "h-8 w-8"
         } absolute bg-second animate-pulse rounded-full`}
       />
     </div>
@@ -255,6 +314,76 @@ export const TabToggle = ({
           </button>
         ))}
       </div>
+    </div>
+  );
+};
+
+export const FilesDropdownZone = ({
+  title = "Drag & Drop your files here",
+  subTitle = "or click to browse",
+  multiple = false,
+  onFilesSelected,
+  loading = false,
+  id = "fileInput",
+  children,
+}) => {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+    if (onFilesSelected) {
+      onFilesSelected(Array.from(event.dataTransfer.files));
+    }
+  };
+
+  const handleFileChange = (event) => {
+    if (onFilesSelected) {
+      onFilesSelected(Array.from(event.target.files));
+    }
+  };
+
+  return (
+    <div
+      className={`w-full p-4 text-center border-2 border-dashed rounded-md transition-all
+      ${isDragging ? "border-primary bg-primary/5" : "border-zinc-300"}
+      ${loading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onClick={() => !loading && document.getElementById(id).click()}
+    >
+      <input
+        id={id}
+        type="file"
+        multiple={multiple}
+        hidden
+        onChange={handleFileChange}
+        disabled={loading}
+      />
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 text-zinc-500">
+          <ImSpinner5 className="animate-spin h-5 w-5" />
+          <span>Uploading...</span>
+        </div>
+      ) : children ? (
+        children
+      ) : (
+        <div className="center-flex flex-col">
+          <img src="/bg-images/files-upload.webp" className="h-20" />
+          <p className="text-sm text-zinc-600">{title}</p>
+          <p className="text-xs text-zinc-500">{subTitle}</p>
+        </div>
+      )}
     </div>
   );
 };

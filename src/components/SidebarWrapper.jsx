@@ -101,17 +101,17 @@ const createNavigationItems = (customer, admin) => {
       icon: <LuList />,
       text: "Lists",
       dropdown: [
+        { icon: <LuList />, text: "All Lists", href: "/my/lists", order: 2 },
         {
           icon: <FolderKanban />,
-          text: "Overview",
-          href: "/overview",
+          text: "Add New List",
+          href: "/my/lists/edit",
           order: 1,
         },
-        { icon: <LuList />, text: "All Lists", href: "/my/lists", order: 2 },
-        { icon: <LuUser />, text: "Contacts", href: "/contacts", order: 3 },
       ],
       order: 3,
     },
+    { icon: <LuUser />, text: "Contacts", href: "/contacts", order: 3 },
     {
       icon: <FileText />,
       text: "Email Templates",

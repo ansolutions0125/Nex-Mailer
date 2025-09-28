@@ -1,10 +1,19 @@
 "use client";
 import PropTypes from "prop-types";
+import { FiX } from "react-icons/fi";
 
-export function EmptyState({ icon: Icon, title, description, action, className = "" }) {
-  const IconCmp = Icon || (() => null);
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+  className = "",
+}) {
+  const IconCmp = Icon || <FiX />;
   return (
-    <div className={`flex flex-col items-center justify-center p-8 text-center ${className}`}>
+    <div
+      className={`flex flex-col items-center justify-center p-8 text-center ${className}`}
+    >
       <div className="w-16 h-16 rounded-md bg-zinc-100 border center-flex mb-4">
         <IconCmp className="w-8 h-8 text-zinc-500" />
       </div>

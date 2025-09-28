@@ -7,7 +7,7 @@ import SidebarWrapper from "@/components/SidebarWrapper";
 import {
   Checkbox,
   EmptyState,
-  GetUrlParams as getQueyrPrams, // <- alias name you asked for
+  GetUrlParams as getQueyrPrams,
   inputStyles,
   LoadingSpinner,
   TabToggle,
@@ -15,14 +15,11 @@ import {
 import useAdminStore from "@/store/useAdminStore";
 import useCustomerStore from "@/store/useCustomerStore";
 import { useToastStore } from "@/store/useToastStore";
-import { motion } from "framer-motion";
 import {
   FiTrash2,
   FiSearch,
   FiDownload,
   FiRefreshCw,
-  FiChevronDown,
-  FiChevronUp,
   FiEye,
   FiEdit,
   FiCopy,
@@ -34,31 +31,13 @@ import {
   fetchWithAuthAdmin,
   fetchWithAuthCustomer,
 } from "@/helpers/front-end/request";
-
-/* ----------------------------- Small table kit ---------------------------- */
-const Table = ({ children, className = "" }) => (
-  <div className={`w-full min-h-96 bg-white border border-zinc-200 rounded overflow-auto ${className}`}>
-    {children}
-  </div>
-);
-const TableHeader = ({ children, className = "" }) => (
-  <div className={`w-full bg-zinc-50 border-b border-zinc-200 text-xs uppercase ${className}`}>{children}</div>
-);
-const TableRow = ({ children, className = "", isSelected = false, onClick }) => (
-  <div className={`border-b border-zinc-100 transition-all ${isSelected ? "bg-blue-50" : ""} ${className}`} onClick={onClick}>
-    {children}
-  </div>
-);
-const TableCell = ({ children, className = "", colSpan = 1, onClick }) => (
-  <div className={`p-3 ${className}`} style={{ gridColumn: `span ${colSpan}` }} onClick={onClick}>
-    {children}
-  </div>
-);
-const TableBody = ({ children, className = "" }) => <div className={className}>{children}</div>;
+import TableFull from "@/components/TableFull";
+import { FaListCheck } from "react-icons/fa6";
+import ListDetailsModal from "./ListDetailsModal";
 
 /* ---------------------------------- Page --------------------------------- */
 const Lists = () => {
-  /* 1) Standardized hooks + fetchData wrapper (use this pattern everywhere) */
+  /* 1) Hooks & fetch wrapper */
   const { showSuccess, showError } = useToastStore();
   const { admin, token: adminToken } = useAdminStore();
   const { customer, token: customerToken } = useCustomerStore();
@@ -98,40 +77,45 @@ const Lists = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [listToDelete, setListToDelete] = useState(null);
-  const [sortConfig, setSortConfig] = useState({ key: "createdAt", direction: "desc" });
+  const [sortConfig, setSortConfig] = useState({
+    key: "createdAt",
+    direction: "desc",
+  });
 
-  // Toolbar
+  /* 3) Detail modal state */
+  const [detailsList, setDetailsList] = useState(null);
+  const [showDetails, setShowDetails] = useState(false);
+
+  /* 4) Toolbar state */
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedLists, setSelectedLists] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
   const [searchMode, setSearchMode] = useState("local");
   const [query, setQuery] = useState("");
 
-  /* 3) URL params (customerId filtering supported) */
+  /* 5) URL params */
   useEffect(() => {
     const params = getQueyrPrams();
     setUrlParams(params);
   }, []);
 
-  /* 4) Data load */
+  /* 6) Data load */
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchData("/api/list", "GET");
-      if (!res?.success) throw new Error(res?.message || "Failed to fetch lists.");
-
+      if (!res?.success)
+        throw new Error(res?.message || "Failed to fetch lists.");
       const data = res.data || [];
       setAllLists(data);
-
       if (urlParams.customerId) {
-        const filtered = data.filter((l) => l.customerId === urlParams.customerId);
-        setLists(filtered);
+        setLists(data.filter((l) => l.customerId === urlParams.customerId));
       } else {
         setLists(data);
       }
     } catch (err) {
       console.error(err);
-      showError(err.message || "Failed to fetch data. Please try again.");
+      showError(err.message || "Failed to fetch data.");
       setAllLists([]);
       setLists([]);
     } finally {
@@ -143,28 +127,32 @@ const Lists = () => {
     fetchAllData();
   }, [fetchAllData]);
 
-  /* 5) Bulk delete */
+  /* 7) Bulk delete */
   const handleBulkDelete = useCallback(async () => {
     if (selectedLists.length === 0) return;
     setBulkDeleting(true);
     try {
-      const res = await fetchData("/api/list", "DELETE", { listIds: selectedLists });
-      if (!res?.success) throw new Error(res?.message || "Failed to delete lists.");
-
-      showSuccess(res.message || `${selectedLists.length} lists deleted successfully!`);
+      const res = await fetchData("/api/list", "DELETE", {
+        listIds: selectedLists,
+      });
+      if (!res?.success)
+        throw new Error(res?.message || "Failed to delete lists.");
+      showSuccess(
+        res.message || `${selectedLists.length} lists deleted successfully!`
+      );
       setSelectedLists([]);
       setSelectAll(false);
       setShowBulkDeleteConfirm(false);
       await fetchAllData();
     } catch (err) {
       console.error(err);
-      showError(err.message || "An error occurred while deleting lists");
+      showError(err.message || "Error deleting lists.");
     } finally {
       setBulkDeleting(false);
     }
   }, [selectedLists, fetchAllData, fetchData, showSuccess, showError]);
 
-  /* 6) CSV export (kept as direct blob download) */
+  /* 8) Export CSV */
   const handleExportCSV = useCallback(async () => {
     setExporting(true);
     try {
@@ -173,7 +161,6 @@ const Lists = () => {
         headers: { "Content-Type": "application/json" },
       });
       if (!response.ok) throw new Error("Failed to export lists.");
-
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -183,23 +170,22 @@ const Lists = () => {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-
       showSuccess("Lists exported successfully!");
     } catch (err) {
       console.error(err);
-      showError(err.message || "An error occurred while exporting lists");
+      showError(err.message || "Error exporting lists.");
     } finally {
       setExporting(false);
     }
   }, [showSuccess, showError]);
 
-  /* 7) Single delete */
+  /* 9) Single delete */
   const handleDelete = useCallback(async () => {
     if (!listToDelete) return;
     try {
       const res = await fetchData(`/api/list?id=${listToDelete._id}`, "DELETE");
-      if (!res?.success) throw new Error(res?.message || "Failed to delete list.");
-
+      if (!res?.success)
+        throw new Error(res?.message || "Failed to delete list.");
       showSuccess(res.message || "List deleted successfully!");
       setShowDeleteConfirm(false);
       setListToDelete(null);
@@ -210,20 +196,14 @@ const Lists = () => {
     }
   }, [listToDelete, fetchAllData, fetchData, showSuccess, showError]);
 
-  /* 8) Sorting/filtering/searching helpers */
-  const handleSort = (key) => {
-    let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") direction = "desc";
-    setSortConfig({ key, direction });
-  };
-
+  /* 10) Filter + Sort */
   const getFilteredAndSortedLists = useCallback(() => {
     let filtered = [...lists];
-
     if (filterStatus !== "all") {
-      filtered = filtered.filter((l) => (filterStatus === "active" ? l.isActive : !l.isActive));
+      filtered = filtered.filter((l) =>
+        filterStatus === "active" ? l.isActive : !l.isActive
+      );
     }
-
     if (query) {
       const term = query.toLowerCase();
       filtered = filtered.filter(
@@ -232,7 +212,6 @@ const Lists = () => {
           (l.description && l.description.toLowerCase().includes(term))
       );
     }
-
     filtered.sort((a, b) => {
       let aVal, bVal;
       if (sortConfig.key === "stats.totalSubscribers") {
@@ -246,13 +225,14 @@ const Lists = () => {
       if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
       return 0;
     });
-
     return filtered;
   }, [lists, filterStatus, sortConfig, query]);
 
-  /* 9) Selection handling */
+  /* 11) Selection helpers */
   const handleSelectList = (id) =>
-    setSelectedLists((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedLists((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
 
   const handleSelectAll = () => {
     const filtered = getFilteredAndSortedLists();
@@ -280,14 +260,171 @@ const Lists = () => {
     setSelectAll(false);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    const d = new Date(dateString);
-    return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-  };
+  /* 12) Row actions */
+  const handleAction = useCallback(
+    (action, list) => {
+      if (action === "view") {
+        console.log("its working");
+        setDetailsList(list);
+        setShowDetails(true);
+      } else if (action === "edit") {
+        router.push(`/my/lists/edit?listId=${list._id}`);
+      } else if (action === "copy") {
+        navigator.clipboard.writeText(list._id);
+        showSuccess("List ID copied to clipboard!");
+      } else if (action === "delete") {
+        setListToDelete(list);
+        setShowDeleteConfirm(true);
+      }
+    },
+    [router, showSuccess]
+  );
 
   const filteredLists = getFilteredAndSortedLists();
 
+  /* 13) Columns for TableFull */
+  const columns = [
+    {
+      header: (
+        <Checkbox
+          selected={
+            filteredLists.length > 0 &&
+            filteredLists.every((l) => selectedLists.includes(l._id))
+          }
+          onChange={handleSelectAll}
+        />
+      ),
+      accessor: "_id",
+      render: (_, row) => (
+        <Checkbox
+          selected={selectedLists.includes(row._id)}
+          onChange={() => handleSelectList(row._id)}
+        />
+      ),
+      headerClassName: "w-10",
+    },
+    {
+      header: "Name",
+      accessor: "name",
+      render: (_, row) => (
+        <div
+          className="flex items-center gap-3"
+          onClick={() => handleAction("view", row)}
+        >
+          <div className="w-10 h-10 p-2.5 center-flex rounded bg-zinc-50 border border-zinc-200">
+            <FaListCheck className="w-full h-full" />
+          </div>
+          <div className="text-sm text-zinc-800 hover:underline cursor-pointer">
+            {row.name}
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: "Status",
+      accessor: "isActive",
+      render: (v) => (
+        <span
+          className={`px-2 py-1 rounded text-xs ${
+            v
+              ? "bg-green-100 text-green-800 border border-green-200"
+              : "bg-red-100 text-red-800 border border-red-200"
+          }`}
+        >
+          {v ? "Active" : "Inactive"}
+        </span>
+      ),
+    },
+    {
+      header: "Automation",
+      accessor: "automationId",
+      render: (v) => (
+        <span
+          className={`flex-nowrap px-2 py-1 rounded text-xs ${
+            v
+              ? "bg-blue-100 text-blue-800 border border-blue-200"
+              : "bg-gray-100 text-gray-800 border border-gray-200"
+          }`}
+        >
+          {v ? "Connected" : "Not Connected"}
+        </span>
+      ),
+    },
+    {
+      header: "Subscribers",
+      accessor: "stats.totalSubscribers",
+      render: (_, row) => (
+        <span className="font-medium">{row.stats?.totalSubscribers || 0}</span>
+      ),
+    },
+    {
+      header: "Created",
+      accessor: "createdAt",
+      render: (v) => (
+        <span className="text-zinc-600">
+          {new Date(v).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "numeric",
+          })}
+        </span>
+      ),
+    },
+    {
+      header: "Actions",
+      accessor: "actions",
+      render: (_, row) => (
+        <div className="flex justify-end">
+          <Dropdown
+            position="left"
+            placeholder="Actions"
+            options={[
+              {
+                value: "view",
+                label: (
+                  <div className="flex items-center gap-2">
+                    <FiEye /> View Details
+                  </div>
+                ),
+              },
+              {
+                value: "edit",
+                label: (
+                  <div className="flex items-center gap-2">
+                    <FiEdit /> Edit List
+                  </div>
+                ),
+              },
+              {
+                value: "copy",
+                label: (
+                  <div className="flex items-center gap-2">
+                    <FiCopy /> Copy List Id
+                  </div>
+                ),
+              },
+              {
+                value: "delete",
+                label: (
+                  <div className="flex items-center gap-2">
+                    <FiTrash2 /> Delete List
+                  </div>
+                ),
+              },
+            ]}
+            onChange={(val) => handleAction(val, row)}
+            className="w-32"
+          />
+        </div>
+      ),
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+    },
+  ];
+
+  /* 14) Render */
   return (
     <SidebarWrapper>
       <Header
@@ -298,7 +435,7 @@ const Lists = () => {
       />
 
       {/* Toolbar */}
-      <div className="bg-white border border-zinc-200 rounded p-3 mb-3">
+      <div className="bg-white border-b border-zinc-200 p-3 mb-3">
         <div className="flex flex-col md:flex-row gap-3 md:items-center">
           <div className="flex-1 flex gap-2">
             <div className="flex-1 relative">
@@ -316,8 +453,22 @@ const Lists = () => {
           <Dropdown
             position="bottom"
             options={[
-              { value: "local", label: <div className="flex items-center gap-2 w-full">Local Search</div> },
-              { value: "live", label: <div className="flex items-center gap-2 w-full">Live Search</div> },
+              {
+                value: "local",
+                label: (
+                  <div className="flex items-center gap-2 w-full">
+                    Local Search
+                  </div>
+                ),
+              },
+              {
+                value: "live",
+                label: (
+                  <div className="flex items-center gap-2 w-full">
+                    Live Search
+                  </div>
+                ),
+              },
             ]}
             placeholder="Search Mode"
             onChange={(val) => setSearchMode(val)}
@@ -326,7 +477,11 @@ const Lists = () => {
           />
 
           <div className="flex gap-1">
-            <button onClick={() => fetchAllData()} className="btn btn-sm btn-primary gap-2" title="Refresh">
+            <button
+              onClick={() => fetchAllData()}
+              className="btn btn-sm btn-primary gap-2"
+              title="Refresh"
+            >
               <FiRefreshCw />
               Refresh
             </button>
@@ -348,13 +503,32 @@ const Lists = () => {
             <Dropdown
               position="bottom"
               options={[
-                { value: "newest", label: <div className="flex items-center gap-2 w-full">Newest First</div> },
-                { value: "oldest", label: <div className="flex items-center gap-2 w-full">Oldest First</div> },
-                { value: "name-asc", label: <div className="flex items-center gap-2 w-full">Name A-Z</div> },
-                { value: "name-desc", label: <div className="flex items-center gap-2 w-full">Name Z-A</div> },
-                { value: "subscribers-asc", label: <div className="flex items-center gap-2 w-full">Subscribers ↑</div> },
-                { value: "subscribers-desc", label: <div className="flex items-center gap-2 w-full">Subscribers ↓</div> },
+                { value: "newest", label: "Newest First" },
+                { value: "oldest", label: "Oldest First" },
+                { value: "name-asc", label: "Name A-Z" },
+                { value: "name-desc", label: "Name Z-A" },
+                { value: "subscribers-asc", label: "Subscribers ↑" },
+                { value: "subscribers-desc", label: "Subscribers ↓" },
               ]}
+              value={
+                sortConfig.key === "createdAt" &&
+                sortConfig.direction === "desc"
+                  ? "newest"
+                  : sortConfig.key === "createdAt" &&
+                    sortConfig.direction === "asc"
+                  ? "oldest"
+                  : sortConfig.key === "name" && sortConfig.direction === "asc"
+                  ? "name-asc"
+                  : sortConfig.key === "name" && sortConfig.direction === "desc"
+                  ? "name-desc"
+                  : sortConfig.key === "stats.totalSubscribers" &&
+                    sortConfig.direction === "asc"
+                  ? "subscribers-asc"
+                  : sortConfig.key === "stats.totalSubscribers" &&
+                    sortConfig.direction === "desc"
+                  ? "subscribers-desc"
+                  : "newest"
+              }
               placeholder="Sort By"
               onChange={(val) => {
                 switch (val) {
@@ -371,10 +545,16 @@ const Lists = () => {
                     setSortConfig({ key: "name", direction: "desc" });
                     break;
                   case "subscribers-asc":
-                    setSortConfig({ key: "stats.totalSubscribers", direction: "asc" });
+                    setSortConfig({
+                      key: "stats.totalSubscribers",
+                      direction: "asc",
+                    });
                     break;
                   case "subscribers-desc":
-                    setSortConfig({ key: "stats.totalSubscribers", direction: "desc" });
+                    setSortConfig({
+                      key: "stats.totalSubscribers",
+                      direction: "desc",
+                    });
                     break;
                   default:
                     setSortConfig({ key: "createdAt", direction: "desc" });
@@ -386,16 +566,22 @@ const Lists = () => {
         </div>
       </div>
 
-      {/* Bulk actions */}
+      {/* Bulk actions bar */}
       {selectedLists.length > 0 && (
-        <div className="sticky top-2 z-10 bg-amber-50 border border-amber-200 text-amber-900 rounded p-2 mb-3 flex items-center gap-2" role="region" aria-label="Bulk actions">
-          <span className="px-2 py-1 rounded-sm text-primary text-xs">{selectedLists.length} Selected</span>
+        <div className="sticky top-2 z-10 bg-amber-50 border border-amber-200 text-amber-900 rounded p-2 mb-3 flex items-center gap-2">
+          <span className="px-2 py-1 rounded-sm text-primary text-xs">
+            {selectedLists.length} Selected
+          </span>
           <button
             onClick={() => setShowBulkDeleteConfirm(true)}
             disabled={bulkDeleting}
             className="btn px-2 py-1 rounded-sm text-white text-xs center-flex gap-2 bg-red-500 hover:bg-red-600 disabled:bg-red-400 disabled:cursor-not-allowed"
           >
-            {bulkDeleting ? <ImSpinner5 className="animate-spin h-3 w-3" /> : <FiTrash2 />}
+            {bulkDeleting ? (
+              <ImSpinner5 className="animate-spin h-3 w-3" />
+            ) : (
+              <FiTrash2 />
+            )}
             Delete selected
           </button>
           <button
@@ -404,182 +590,52 @@ const Lists = () => {
             className="btn px-2 py-1 rounded-sm text-white text-xs center-flex gap-2 bg-zinc-500 hover:bg-zinc-600 disabled:bg-zinc-400 disabled:cursor-not-allowed"
             title="Export all lists to CSV"
           >
-            {exporting ? <ImSpinner5 className="animate-spin h-3 w-3" /> : <FiDownload />}
+            {exporting ? (
+              <ImSpinner5 className="animate-spin h-3 w-3" />
+            ) : (
+              <FiDownload />
+            )}
             Export All
           </button>
-          <button onClick={clearSelection} className="btn btn-xs hover:bg-amber-200 ml-auto text-xs text-amber-900/70 hover:underline rounded-sm">
+          <button
+            onClick={clearSelection}
+            className="btn btn-xs hover:bg-amber-200 ml-auto text-xs text-amber-900/70 hover:underline rounded-sm"
+          >
             Clear
           </button>
         </div>
       )}
 
-      {/* Table / Empty / Loader */}
+      {/* Table or empty */}
       {loading ? (
         <LoadingSpinner />
       ) : filteredLists.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <div className="grid grid-cols-[50px_1fr_120px_140px_120px_120px_140px] items-center">
-              <TableCell className="p-3">
-                <Checkbox selected={selectAll} onChange={handleSelectAll} />
-              </TableCell>
-              <TableCell className="p-3 cursor-pointer hover:text-primary" onClick={() => handleSort("name")}>
-                <div className="flex items-center gap-1">
-                  Name
-                  {sortConfig.key === "name" && (sortConfig.direction === "asc" ? <FiChevronUp /> : <FiChevronDown />)}
-                </div>
-              </TableCell>
-              <TableCell className="p-3">Status</TableCell>
-              <TableCell className="p-3">Automation</TableCell>
-              <TableCell className="p-3 cursor-pointer hover:text-primary" onClick={() => handleSort("stats.totalSubscribers")}>
-                <div className="flex items-center gap-1">
-                  Subscribers
-                  {sortConfig.key === "stats.totalSubscribers" && (sortConfig.direction === "asc" ? <FiChevronUp /> : <FiChevronDown />)}
-                </div>
-              </TableCell>
-              <TableCell className="p-3 cursor-pointer hover:text-primary" onClick={() => handleSort("createdAt")}>
-                <div className="flex items-center gap-1">
-                  Created
-                  {sortConfig.key === "createdAt" && (sortConfig.direction === "asc" ? <FiChevronUp /> : <FiChevronDown />)}
-                </div>
-              </TableCell>
-              <TableCell className="p-3">Actions</TableCell>
-            </div>
-          </TableHeader>
-
-          <TableBody>
-            {filteredLists.map((list) => {
-              const isSelected = selectedLists.includes(list._id);
-              const isConnected = Boolean(list.automationId);
-
-              return (
-                <TableRow key={list._id} isSelected={isSelected}>
-                  <div className="grid grid-cols-[50px_1fr_120px_140px_120px_120px_140px] items-center">
-                    <TableCell>
-                      <Checkbox selected={isSelected} onChange={() => handleSelectList(list._id)} />
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-20 h-20 bg-zinc-100 rounded border overflow-hidden">
-                          {list.logo ? (
-                            <img src={list.logo} alt={list.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full bg-zinc-100 center-flex">
-                              <span className="text-xs text-zinc-400">{list.name?.charAt(0)?.toUpperCase()}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <div
-                            className="font-medium text-zinc-800 hover:underline cursor-pointer"
-                            onClick={() => router.push(`/my/lists/edit?listId=${list._id}`)}
-                          >
-                            {list.name}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 rounded text-xs ${
-                          list.isActive
-                            ? "bg-green-100 text-green-800 border border-green-200"
-                            : "bg-red-100 text-red-800 border border-red-200"
-                        }`}
-                      >
-                        {list.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </TableCell>
-
-                    <TableCell>
-                      <span
-                        className={`flex-nowrap px-2 py-1 rounded text-xs ${
-                          isConnected
-                            ? "bg-blue-100 text-blue-800 border border-blue-200"
-                            : "bg-gray-100 text-gray-800 border border-gray-200"
-                        }`}
-                      >
-                        {isConnected ? "Connected" : "Not Connected"}
-                      </span>
-                    </TableCell>
-
-                    <TableCell>
-                      <span className="font-medium">{list.stats?.totalSubscribers || 0}</span>
-                    </TableCell>
-
-                    <TableCell>
-                      <span className="text-sm text-zinc-600">{formatDate(list.createdAt)}</span>
-                    </TableCell>
-
-                    <TableCell>
-                      <Dropdown
-                        position="left"
-                        options={[
-                          {
-                            value: "view",
-                            label: (
-                              <div className="flex items-center gap-2 w-full">
-                                <FiEye />
-                                View Details
-                              </div>
-                            ),
-                          },
-                          {
-                            value: "edit",
-                            label: (
-                              <div className="flex items-center gap-2 w-full">
-                                <FiEdit />
-                                Edit List
-                              </div>
-                            ),
-                          },
-                          {
-                            value: "copy",
-                            label: (
-                              <div className="flex items-center gap-2 w-full">
-                                <FiCopy />
-                                Copy List Id
-                              </div>
-                            ),
-                          },
-                          {
-                            value: "delete",
-                            label: (
-                              <div className="flex items-center gap-2 w-full">
-                                <FiTrash2 />
-                                Delete List
-                              </div>
-                            ),
-                          },
-                        ]}
-                        placeholder="List Actions"
-                        onChange={(val) => {
-                          if (val === "view") router.push(`/my/lists/edit?listId=${list._id}&mode=view`);
-                          if (val === "edit") router.push(`/my/lists/edit?listId=${list._id}`);
-                          if (val === "delete") {
-                            setListToDelete(list);
-                            setShowDeleteConfirm(true);
-                          }
-                          if (val === "copy") navigator.clipboard.writeText(list._id);
-                        }}
-                      />
-                    </TableCell>
-                  </div>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <TableFull
+          columns={columns}
+          data={filteredLists}
+          loading={loading}
+          emptyPlaceholder={
+            <EmptyState
+              title="0 Lists Found"
+              description='No List Found. Click "Create New List" to add a List.'
+            />
+          }
+          rowKey={(row) => row._id}
+        />
       ) : (
         <EmptyState
           title="0 Lists Found"
-          description={`No List Found. Click "Create New List" to add a List.`}
+          description='No List Found. Click "Create New List" to add a List.'
         />
       )}
 
-      {/* Confirmation Modals */}
+      {showDetails && (
+        <ListDetailsModal
+          list={detailsList}
+          onClose={() => setShowDetails(false)}
+        />
+      )}
+
       <ConfirmationModal
         isOpen={showDeleteConfirm}
         onClose={() => {

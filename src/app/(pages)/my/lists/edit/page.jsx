@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import SidebarWrapper from "@/components/SidebarWrapper";
+import {
+  FilesDropdownZone,
+  GetUrlParams as getQueryParams,
+  TabToggle,
+  ToggleLiver,
+} from "@/presets/styles";
 import { Dropdown } from "@/components/Dropdown";
-import { GetUrlParams as getQueryParams, ToggleLiver } from "@/presets/styles";
 import { inputStyles, labelStyles, LoadingSpinner } from "@/presets/styles";
 import { useToastStore } from "@/store/useToastStore";
 import useAdminStore from "@/store/useAdminStore";
@@ -16,79 +21,6 @@ import {
 import { uploadToImgbb } from "@/presets/Presets.jsx"; // ✅ import uploader
 import { FiArrowLeft, FiCheck, FiX } from "react-icons/fi";
 import { ImSpinner5 } from "react-icons/im";
-
-/* ---------- Mini Image Uploader ---------- */
-const ImageUploader = ({ apiKey, value, onChange, disabled }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleFiles = async (files) => {
-    const file = files[0];
-    if (!file) return;
-    setError("");
-    setLoading(true);
-    try {
-      const result = await uploadToImgbb(file, apiKey);
-      onChange(result.url);
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        handleFiles(e.dataTransfer.files);
-      }}
-      onClick={() => !disabled && document.getElementById("logoInput").click()}
-      className={`border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition ${
-        isDragging ? "border-primary bg-primary/5" : "border-zinc-300"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-    >
-      <input
-        id="logoInput"
-        type="file"
-        accept="image/*"
-        hidden
-        disabled={disabled}
-        onChange={(e) => handleFiles(e.target.files)}
-      />
-
-      {loading ? (
-        <p className="text-sm text-zinc-500">Uploading...</p>
-      ) : value ? (
-        <div className="flex flex-col items-center gap-2">
-          <img
-            src={value}
-            alt="Logo"
-            className="max-h-32 object-contain rounded"
-          />
-          {!disabled && (
-            <p className="text-xs text-zinc-500">Click or drop to replace</p>
-          )}
-        </div>
-      ) : (
-        <p className="text-sm text-zinc-600">
-          Drag & drop an image, or click to upload
-        </p>
-      )}
-
-      {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
-    </div>
-  );
-};
-/* ----------------------------------------- */
 
 const EditListPage = () => {
   /* ---------- 1. Hooks + auth wrapper ---------- */
@@ -129,6 +61,10 @@ const EditListPage = () => {
   /* ---------- 3. State ---------- */
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoUploadMethod, setLogoUploadMethod] = useState("file");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [logoPreview, setLogoPreview] = useState(null);
   const [automations, setAutomations] = useState([]);
   const [formData, setFormData] = useState({
     name: "",
@@ -191,6 +127,46 @@ const EditListPage = () => {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
+  };
+
+  const handleLogoUpload = async (files) => {
+    const file = files[0];
+    if (!file) return;
+    setLogoPreview(URL.createObjectURL(file));
+    setUploadingLogo(true);
+    try {
+      const result = await uploadToImgbb(
+        file,
+        process.env.NEXT_PUBLIC_IMGBB_KEY
+      );
+      setFormData((prev) => ({ ...prev, logo: result.url }));
+    } catch (err) {
+      console.error(err);
+      showError(err.message || "Logo upload failed.");
+    } finally {
+      setUploadingLogo(false);
+      setLogoPreview(null); // Clear preview after upload finishes
+    }
+  };
+
+  const handleLogoUrlUpload = async () => {
+    if (!logoUrl || !logoUrl.startsWith("http")) {
+      showError("Please enter a valid image URL.");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const result = await uploadToImgbb(
+        logoUrl,
+        process.env.NEXT_PUBLIC_IMGBB_KEY
+      );
+      setFormData((prev) => ({ ...prev, logo: result.url }));
+    } catch (err) {
+      console.error(err);
+      showError(err.message || "Logo upload from URL failed.");
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -276,14 +252,27 @@ const EditListPage = () => {
               {/* Logo */}
               <div>
                 <label className={labelStyles("base")}>Logo</label>
-                <ImageUploader
-                  apiKey={process.env.NEXT_PUBLIC_IMGBB_KEY}
-                  value={formData.logo}
+                <FilesDropdownZone
+                  onFilesSelected={handleLogoUpload}
+                  loading={uploadingLogo}
                   disabled={viewMode}
-                  onChange={(url) =>
-                    setFormData((prev) => ({ ...prev, logo: url }))
-                  }
-                />
+                  id="logo-uploader"
+                >
+                  {logoPreview || formData.logo ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <img
+                        src={logoPreview || formData.logo}
+                        alt="Logo"
+                        className="max-h-24 object-contain rounded"
+                      />
+                      {!viewMode && (
+                        <p className="text-xs text-zinc-500">
+                          Click or drop to replace
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </FilesDropdownZone>
               </div>
 
               {/* Description */}

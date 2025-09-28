@@ -84,7 +84,7 @@ const PlanTable = ({
                     <span className="hover:underline hover:text-zinc-600">
                       {p.name}
                     </span>
-                    <span className="text-[0.675rem] text-zinc-500 border-t pt-1">
+                    <span className="text-[0.675rem] text-zinc-500">
                       Slogon: {p.slogan}
                     </span>
                   </div>
